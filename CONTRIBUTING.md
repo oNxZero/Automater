@@ -1,6 +1,6 @@
 # Contributing
 
-Moonlight Studio is a native PySide6 Linux app. Start with the
+Automater is a native PySide6 Linux app. Start with the
 [user guide](docs/USER_GUIDE.md), [format](docs/FORMAT.md) and [audit](docs/AUDIT.md).
 
 ## Development setup
@@ -34,10 +34,16 @@ send input to a user's real applications. Run `./start.sh --demo` for UI work.
 - Test UI changes at 1000×680 and a wide viewport, including Daylight. Check
   keyboard focus, selection, notes while typing, tabs, Undo and an input-free run.
 - State whether a report uses Active desktop, Background X11 or a separate session.
-  Include Linux desktop/session type and Studio/Python/Qt versions. Review doctor
+  Include Linux desktop/session type and Automater/Python/Qt versions. Review doctor
   output before sharing; it may identify local devices and paths.
 
 Direct game/compositor acceptance must be tested on an actual supported desktop;
 mocked backends or a private X11 receiver cannot establish it. See the
 [release checks](docs/RELEASE.md). Report security-sensitive issues through
 [the private reporting route](SECURITY.md).
+
+## Documentation screenshots
+
+`QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/screenshots.py` refreshes native
+Qt screenshots using synthetic workflows, an isolated config directory and Test
+mode. It never captures physical input or connects to real destination windows.

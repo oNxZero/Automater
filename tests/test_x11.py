@@ -3,8 +3,8 @@
 import pytest
 from Xlib import X, display
 
-from moonlight_studio.models import Step
-from moonlight_studio.x11 import BackgroundBackend, WindowInfo
+from automater.models import Step
+from automater.x11 import BackgroundBackend, WindowInfo
 
 
 @pytest.fixture
@@ -27,9 +27,9 @@ def receiver():
         | X.ButtonReleaseMask
         | X.PointerMotionMask,
     )
-    window.set_wm_class("moonlight-test", "MoonlightTest")
+    window.set_wm_class("automater-test", "AutomaterTest")
     connection.sync()
-    target = WindowInfo(window.id, "Test receiver", 0, ("moonlight-test", "MoonlightTest"))
+    target = WindowInfo(window.id, "Test receiver", 0, ("automater-test", "AutomaterTest"))
     backend = BackgroundBackend(target)
     yield connection, window, backend
     backend.close()

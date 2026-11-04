@@ -54,8 +54,7 @@ Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
   successfully with `python -m build`. Runtime dependencies have tested constraints.
 - The actual Qt window was rendered and visually inspected at 1240×800 and 1000×680.
   Screenshots include [workflow](editor.png), [events](events.png), [run settings](run-settings.png),
-  [guided setup](setup.png) and [welcome](welcome.png). An actual Test mode recording
-  produced [the animated walkthrough](workflow-demo.gif). Record/run/pause/stop
+  [guided setup](setup.png) and [welcome](welcome.png). The current screenshots are rendered from synthetic Test mode workflows. Record/run/pause/stop
   remain in a fixed transport bar, with Pause/Stop hidden while idle. Properties
   are opened on demand. The previous sidebar and duplicate navigation are removed.
 - A synthetic 20,000-event recording projects to 10,001 actions on one continuous
@@ -100,7 +99,7 @@ The live X11 test checks background positioning on an unmapped controlled receiv
 Test mode and cancelled/late position-picking callbacks are checked separately.
 
 New actual Qt screenshots show [the controls](editor.png), [Start settings](start-controls.png)
-and [countdown](countdown.png). The Test mode GIF uses frames from the running app.
+and [countdown](countdown.png). Documentation captures use the running Qt app with synthetic workflows.
 
 This sandbox exposes an X server but no `/dev/input` or `/dev/uinput`. The following
 manual checks remain unverified:
@@ -272,7 +271,7 @@ verifies the text viewport keeps its size.
   after failed playback validation. Clearing an imported description keeps Undo.
   Quit permits Discard/Keep editing for an invalid draft instead of trapping the user.
 - Actual native screenshots were inspected at 1440×920 and 1000×680, including
-  [Studio](editor.png), [the gallery](themes.png), [Daylight](daylight.png) and the
+  [Automater](editor.png), [the gallery](themes.png), [Daylight](daylight.png) and the
   group panel. The pass found compressed gallery labels and double-mapped icons;
   these were fixed before release. No generated mockups are used.
 - The README now describes current flows; earlier feature history is archived.
@@ -318,3 +317,30 @@ verifies the text viewport keeps its size.
   documentation links are checked before completion. See [the feature matrix](COMPATIBILITY.md).
   Native Qt views at 1000×680 were inspected; Devices now scrolls so the added
   compatibility action does not compress its capture instructions.
+
+## v0.12 Automater rename and installation
+
+- Python 3.11 (installed wheel) and Python 3.14 (editable checkout) each pass
+  343 tests locally; the native Wayland test is skipped locally without Weston.
+  Lint/format, shell syntax, documentation links, packaged contents and doctor pass.
+- Product UI, CLI/module/package, repository metadata/URLs, desktop identity, default
+  theme, integration identifiers, docs and screenshots use Automater. The earlier
+  identifiers remain only where needed to migrate settings or exclude old virtual
+  input devices. Root recordings are untouched and ignored by Git.
+- Migration tests copy synthetic settings, saved workflows and recovery files into
+  the new config root; preserve original bytes; relocate library paths; translate
+  the previous default theme; and keep already existing Automater settings. Failed
+  copies leave no partial destination. Config-path discovery and doctor do not
+  perform migration; ordinary GUI startup prepares it.
+- Actual desktop entries pass desktop-file-validate and launch a synthetic receiver
+  through GIO, including paths containing spaces, apostrophes, equals, percent,
+  backslashes, quotes, dollar signs and backticks. No physical input is sent.
+  Installer tests reject runtime failures before registering a menu entry; shortcut
+  removal preserves settings and unrelated entries. A real --no-system-packages
+  install was also checked with a temporary XDG_DATA_HOME.
+- All current screenshots come from the actual Qt UI with a temporary config, empty
+  device list, synthetic windows and input-free Test mode. The screenshot script is
+  included in the source archive. Old-branded animation/drag captures were removed.
+- Source and wheel builds contain the Automater package/command and only synthetic
+  example JSON. The expanded distro/native-display CI matrix also checks desktop
+  registration; administrator package installation is not executed on the host.

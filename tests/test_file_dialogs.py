@@ -2,8 +2,8 @@ from PySide6.QtCore import QDir
 from PySide6.QtWidgets import QDialog, QFileDialog
 from test_gui import clean, window
 
-from moonlight_studio.models import Script, Step
-from moonlight_studio.storage import load, save
+from automater.models import Script, Step
+from automater.storage import load, save
 
 
 def test_saved_tabs_use_filenames_without_changing_workflow_data(qtbot, tmp_path, monkeypatch):
@@ -66,7 +66,7 @@ def test_open_and_save_as_share_folder_and_relative_save_stays_inside_it(
             calls["open_folder"] = directory
             return "", ""
 
-    monkeypatch.setattr("moonlight_studio.window.QFileDialog", Dialog)
+    monkeypatch.setattr("automater.window.QFileDialog", Dialog)
     assert win.save_as()
     assert win.path == folder / "renamed.json"
     assert load(win.path).steps == [Step(25)]

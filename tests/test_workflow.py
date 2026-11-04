@@ -3,8 +3,8 @@ from dataclasses import replace
 from PySide6.QtCore import Qt
 from test_gui import clean, window
 
-from moonlight_studio.models import Script, Step
-from moonlight_studio.workflow import VIRTUALIZE_AFTER, blocks_for
+from automater.models import Script, Step
+from automater.workflow import VIRTUALIZE_AFTER, blocks_for
 
 
 def test_grouping_retains_events_timing_and_enabled_boundaries():

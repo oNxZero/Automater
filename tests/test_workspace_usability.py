@@ -2,10 +2,10 @@ from PySide6.QtCore import QPointF
 from test_batch_recording import feed, setup_recording
 from test_gui import clean, window
 
-from moonlight_studio.camera import CameraFollower
-from moonlight_studio.dialogs import SaveChangesDialog
-from moonlight_studio.models import Script, Step
-from moonlight_studio.storage import load, save
+from automater.camera import CameraFollower
+from automater.dialogs import SaveChangesDialog
+from automater.models import Script, Step
+from automater.storage import load, save
 
 
 def test_grid_columns_follow_viewport_width_zoom_and_inspector(qtbot, tmp_path, monkeypatch):
@@ -141,7 +141,7 @@ def test_generated_activation_script_activates_only_the_exact_window(qapp):
 
     from PySide6.QtQml import QJSEngine
 
-    from moonlight_studio.open_windows import DesktopWindow, activation_script
+    from automater.open_windows import DesktopWindow, activation_script
 
     target = DesktopWindow('window-"ID', "Game", 123, ('app-"PID',))
     engine = QJSEngine()
@@ -197,7 +197,7 @@ def test_selected_window_is_activated_after_countdown_before_inputs(qtbot, tmp_p
         return backend
 
     factory.startup_delay = 0
-    monkeypatch.setattr("moonlight_studio.window.UInputBackend", factory)
+    monkeypatch.setattr("automater.window.UInputBackend", factory)
     monkeypatch.setattr(win.window_observer, "activate", activate)
     win.test_mode.setChecked(False)
     win.countdown.setValue(0)

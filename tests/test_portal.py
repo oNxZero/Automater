@@ -12,7 +12,7 @@ import pytest
 from dbus_next import Message, MessageType, Variant
 from dbus_next.aio import MessageBus
 
-from moonlight_studio.portal import SERVICE, PortalConnection, PortalPointer
+from automater.portal import SERVICE, PortalConnection, PortalPointer
 
 
 class FakePortal:
@@ -246,8 +246,8 @@ def test_window_replay_uses_approved_portal_for_every_loop(
     try:
         with qtbot.waitSignal(connection.ready, timeout=4000):
             connection.connect_pointer()
-        monkeypatch.setattr("moonlight_studio.window.UInputBackend", DesktopBackend)
-        monkeypatch.setattr("moonlight_studio.pointer.capability", lambda: (False, "Wayland"))
+        monkeypatch.setattr("automater.window.UInputBackend", DesktopBackend)
+        monkeypatch.setattr("automater.pointer.capability", lambda: (False, "Wayland"))
         win.test_mode.setChecked(False)
         win.start_x.setValue(-1000)
         win.start_y.setValue(200)
@@ -268,7 +268,7 @@ def test_window_replay_uses_approved_portal_for_every_loop(
 
 
 def test_read_only_portal_probe_never_opens_a_session(portal_server):
-    from moonlight_studio.portal_probe import probe
+    from automater.portal_probe import probe
 
     result = probe(portal_server.address)
     assert result["available"] and result["pointer_supported"]
@@ -277,7 +277,7 @@ def test_read_only_portal_probe_never_opens_a_session(portal_server):
 
 @pytest.mark.parametrize("missing", ["RemoteDesktop", "ScreenCast"])
 def test_missing_portal_interfaces_fail_before_permission_ui(qtbot, portal_server, missing):
-    from moonlight_studio.portal_probe import probe
+    from automater.portal_probe import probe
 
     portal_server.missing_interface = missing
     result = probe(portal_server.address)
@@ -305,7 +305,7 @@ def test_portal_without_pointer_does_not_prompt_for_permission(qtbot, portal_ser
 
 def test_doctor_portal_check_uses_only_read_only_properties(portal_server):
     result = subprocess.run(
-        [sys.executable, "-m", "moonlight_studio.app", "--doctor", "--check-portal"],
+        [sys.executable, "-m", "automater.app", "--doctor", "--check-portal"],
         env={**os.environ, "DBUS_SESSION_BUS_ADDRESS": portal_server.address},
         capture_output=True,
         text=True,

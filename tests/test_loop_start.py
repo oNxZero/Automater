@@ -5,9 +5,9 @@ import pytest
 from test_engine import Backend
 from test_gui import clean, window
 
-from moonlight_studio.engine import PlaybackOptions, Replay
-from moonlight_studio.models import Script, Step
-from moonlight_studio.pointer import HyprlandPointer, X11Pointer, desktop_pointer
+from automater.engine import PlaybackOptions, Replay
+from automater.models import Script, Step
+from automater.pointer import HyprlandPointer, X11Pointer, desktop_pointer
 
 
 class PointBackend(Backend):
@@ -167,7 +167,7 @@ def test_preview_with_position_never_touches_desktop(qtbot, tmp_path, monkeypatc
     def forbidden():
         raise AssertionError("Preview must not touch desktop")
 
-    monkeypatch.setattr("moonlight_studio.pointer.desktop_pointer", forbidden)
+    monkeypatch.setattr("automater.pointer.desktop_pointer", forbidden)
     win.start_enabled.setChecked(True)
     win.start_x.setValue(300)
     win.start_y.setValue(200)
@@ -184,7 +184,7 @@ def test_position_capture_and_cancelled_callback(qtbot, tmp_path, monkeypatch):
     win = window(qtbot, tmp_path, monkeypatch)
     closed = []
     provider = SimpleNamespace(position=lambda: (320, 240), close=lambda: closed.append(True))
-    monkeypatch.setattr("moonlight_studio.pointer.desktop_pointer", lambda: provider)
+    monkeypatch.setattr("automater.pointer.desktop_pointer", lambda: provider)
     win.start_enabled.setChecked(True)
     win.pick_position()
     win.pick_deadline = time.monotonic() - 0.01

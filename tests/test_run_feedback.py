@@ -5,12 +5,12 @@ from evdev import InputEvent, ecodes
 from test_engine import Backend, eventually
 from test_gui import clean, window
 
-from moonlight_studio.actions import create_action
-from moonlight_studio.engine import PlaybackOptions, Replay
-from moonlight_studio.linux_input import Recorder
-from moonlight_studio.models import Script, Step
-from moonlight_studio.run_feedback import block_states
-from moonlight_studio.workflow import blocks_for
+from automater.actions import create_action
+from automater.engine import PlaybackOptions, Replay
+from automater.linux_input import Recorder
+from automater.models import Script, Step
+from automater.run_feedback import block_states
+from automater.workflow import blocks_for
 
 
 def test_waiting_before_first_input_does_not_mark_it_as_running():

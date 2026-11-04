@@ -4,10 +4,10 @@ import pytest
 from test_engine import Backend
 from test_gui import clean, window
 
-from moonlight_studio.actions import clone_selection, decode_selection, encode_steps
-from moonlight_studio.engine import PlaybackOptions, Replay
-from moonlight_studio.models import Script, Step
-from moonlight_studio.storage import load, save
+from automater.actions import clone_selection, decode_selection, encode_steps
+from automater.engine import PlaybackOptions, Replay
+from automater.models import Script, Step
+from automater.storage import load, save
 
 
 def legacy_annotated():

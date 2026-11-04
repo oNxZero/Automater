@@ -13,16 +13,16 @@ from types import SimpleNamespace
 import pytest
 from Xlib import X, display
 
-from moonlight_studio.isolated import (
+from automater.isolated import (
     GameSession,
     IsolatedBackend,
     SessionAddress,
     SessionRPC,
     application_command,
 )
-from moonlight_studio.isolated_worker import InputHandler, InputServer, validate_environment
-from moonlight_studio.models import Step
-from moonlight_studio.x11 import WindowInfo, identity
+from automater.isolated_worker import InputHandler, InputServer, validate_environment
+from automater.models import Step
+from automater.x11 import WindowInfo, identity
 
 
 @pytest.fixture
@@ -80,12 +80,12 @@ def game_receiver(owned_display):
         | X.PointerMotionMask,
     )
     window.set_wm_name("Test game")
-    window.set_wm_class("moonlight-private-test", "MoonlightPrivateTest")
+    window.set_wm_class("automater-private-test", "AutomaterPrivateTest")
     window.map()
     connection.sync()
     pid, wm_class = identity(connection, window)
     target = WindowInfo(window.id, "Test game", pid, wm_class)
-    with tempfile.TemporaryDirectory(prefix="moonlight-rpc-") as directory:
+    with tempfile.TemporaryDirectory(prefix="automater-rpc-") as directory:
         address = SessionAddress(str(Path(directory) / "input.sock"), "test-nonce")
         server = InputServer(address.socket_path, InputHandler)
         server.display_name = owned_display
@@ -116,7 +116,7 @@ def received(connection):
 def test_private_game_input_has_its_own_pointer_focus_and_real_events(game_receiver, monkeypatch):
     connection, window, address, target = game_receiver
     # The public backend must not open any X display itself.
-    monkeypatch.setattr("moonlight_studio.isolated.display", None, raising=False)
+    monkeypatch.setattr("automater.isolated.display", None, raising=False)
     backend = IsolatedBackend(address, target)
     try:
         backend.prepare_start((100, 120))
@@ -234,7 +234,7 @@ def test_session_launch_is_explicit_nested_and_has_no_global_input_fallback(monk
         args, kwargs = captured[0]
         command = args[0]
         assert command[0] == "/usr/bin/gamescope"
-        assert "-o" in command and "moonlight_studio.isolated_worker" in command
+        assert "-o" in command and "automater.isolated_worker" in command
         assert "--grab" not in command and "--force-grab-cursor" not in command
         assert kwargs["start_new_session"] and "shell" not in kwargs
         assert session.directory.stat().st_mode & 0o777 == 0o700
@@ -260,8 +260,8 @@ def test_run_settings_route_only_to_the_selected_session(qtbot, tmp_path, monkey
     def forbidden():
         pytest.fail("Isolated playback must never fall back to desktop input")
 
-    monkeypatch.setattr("moonlight_studio.window.UInputBackend", forbidden)
-    monkeypatch.setattr("moonlight_studio.window.IsolatedBackend", PrivateBackend)
+    monkeypatch.setattr("automater.window.UInputBackend", forbidden)
+    monkeypatch.setattr("automater.window.IsolatedBackend", PrivateBackend)
     win.mode.setCurrentIndex(2)
     win.test_mode.setChecked(False)
     win.countdown.setValue(0)
@@ -283,7 +283,7 @@ def test_switching_to_session_mode_clears_host_window_targets(qtbot, tmp_path, m
 
     win = window(qtbot, tmp_path, monkeypatch)
     host = WindowInfo(5, "Host window", 22, ("Host", "Host"))
-    monkeypatch.setattr("moonlight_studio.window.x11.windows", lambda: [host])
+    monkeypatch.setattr("automater.window.x11.windows", lambda: [host])
     win.mode.setCurrentIndex(1)
     assert win.target.findData(host) >= 0
     win.mode.setCurrentIndex(2)

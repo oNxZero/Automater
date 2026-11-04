@@ -3,9 +3,9 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "moonlight-studio"
-version = "0.11.0"
-description = "A Linux input recorder and visual macro editor inspired by Moonlight"
+name = "automater"
+version = "0.12.0"
+description = "A native Linux input recorder and visual workflow editor"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{name = "oNxZero"}]
@@ -14,21 +14,21 @@ classifiers = ["Operating System :: POSIX :: Linux", "Programming Language :: Py
 dependencies = ["PySide6-Essentials>=6.11.2,<6.12", "evdev>=1.9,<2", "python-xlib>=0.33,<1", "dbus-next>=0.2.3,<1"]
 
 [project.urls]
-Homepage = "https://github.com/oNxZero/moonlight-studio"
-Issues = "https://github.com/oNxZero/moonlight-studio/issues"
-Documentation = "https://github.com/oNxZero/moonlight-studio/blob/main/docs/USER_GUIDE.md"
+Homepage = "https://github.com/oNxZero/Automater"
+Issues = "https://github.com/oNxZero/Automater/issues"
+Documentation = "https://github.com/oNxZero/Automater/blob/main/docs/USER_GUIDE.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "pytest-qt>=4.4,<5", "ruff>=0.12,<1", "build>=1.2,<2"]
 
 [project.scripts]
-moonlight-studio = "moonlight_studio.app:main"
+automater = "automater.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-moonlight_studio = ["assets/*.svg"]
+automater = ["assets/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

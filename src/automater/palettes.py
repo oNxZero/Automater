@@ -21,8 +21,8 @@ class Palette:
 
 # The named palettes follow the user's original Moonlight theme gallery.
 PALETTES = {
-    "studio": Palette(
-        "Studio",
+    "automater": Palette(
+        "Automater",
         "#11131e",
         "#1b1e2e",
         "#494d64",

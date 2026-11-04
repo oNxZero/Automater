@@ -4,9 +4,7 @@ import sys
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Moonlight Studio input recorder and visual editor"
-    )
+    parser = argparse.ArgumentParser(description="Automater input recorder and visual editor")
     parser.add_argument(
         "--demo", action="store_true", help="Load an example with input-free test mode"
     )
@@ -20,7 +18,7 @@ def main():
     )
     args = parser.parse_args()
     if not sys.platform.startswith("linux"):
-        parser.error("Moonlight Studio supports Linux only.")
+        parser.error("Automater supports Linux only.")
     if args.check_portal and not args.doctor:
         parser.error("--check-portal must be used with --doctor")
     if args.doctor:
@@ -41,11 +39,13 @@ def main():
         parser.error(str(exc))
     from PySide6.QtWidgets import QApplication
 
+    from .desktop import APP_ID
     from .window import MainWindow
 
-    app = QApplication(sys.argv[:1])
-    app.setApplicationName("Moonlight Studio")
-    app.setOrganizationName("Moonlight")
+    app = QApplication([APP_ID])
+    app.setApplicationName("Automater")
+    app.setOrganizationName("oNxZero")
+    app.setDesktopFileName("io.github.onxzero.Automater")
     window = MainWindow(demo=args.demo)
     window.show()
     return app.exec()

@@ -6,12 +6,12 @@ import tempfile
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
-from moonlight_studio import window
+from automater import window
 
 app = QApplication([])
 window.devices = lambda: []
 window.x11.windows = lambda: []
-with tempfile.TemporaryDirectory(prefix="moonlight-native-smoke-") as folder:
+with tempfile.TemporaryDirectory(prefix="automater-native-smoke-") as folder:
     win = window.MainWindow(folder, demo=True)
     win.show()
     win.apply_appearance("daylight")

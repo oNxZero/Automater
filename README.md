@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/logo.svg" width="68" alt="Moonlight Studio" />
+<img src="docs/logo.svg" width="68" alt="Automater" />
 
-# Moonlight Studio
+# Automater
 
 **Record a routine. Make it yours. Run it again.**
 
@@ -11,14 +11,15 @@ Inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Studio-v0.11.0-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Automater-v0.12.0-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
+[![Checks](https://github.com/oNxZero/Automater/actions/workflows/ci.yml/badge.svg)](https://github.com/oNxZero/Automater/actions/workflows/ci.yml)
 
-[Get started](#get-started) · [User guide](docs/USER_GUIDE.md) · [Themes](#themes) · [Compatibility](#background-compatibility) · [Contribute](CONTRIBUTING.md)
+[Install](#install) · [User guide](docs/USER_GUIDE.md) · [Themes](#themes) · [Linux support](docs/COMPATIBILITY.md) · [Contribute](CONTRIBUTING.md)
 
 </div>
 
-![Moonlight Studio's workflow editor](docs/editor.png)
+![Automater's workflow editor](docs/editor.png)
 
 ## What you can do
 
@@ -39,35 +40,72 @@ Inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
 Workflows are linear sequences. Repeat the whole routine in Run settings.
 Conditional branches, nested loops, gamepads, Windows and macOS are not implemented.
 
-## Get started
+## Install
 
-Linux, Python 3.11+ and access to the repository are required.
-The standard Qt wheels need glibc 2.34+ on x86_64 or 2.39+ on aarch64. See the
-[distro/desktop matrix](docs/COMPATIBILITY.md) for runtime and feature differences.
+**Copy, paste, install. Then search for Automater in your application menu.**
 
 ```bash
-git clone https://github.com/oNxZero/moonlight-studio.git
-cd moonlight-studio
-./start.sh
+(
+  set -e
+  mkdir -p "$HOME/.local/share"
+  git clone https://github.com/oNxZero/Automater.git "$HOME/.local/share/Automater"
+  cd "$HOME/.local/share/Automater"
+  ./install.sh
+)
 ```
 
-The launcher creates a local virtual environment and installs tested dependencies.
-After updating, close the app and run `./start.sh` again. It refreshes changed
-dependencies automatically. Run Studio as your regular user.
+You need **Git**, **Python 3.11+**, and repository access while this project is
+private. If cloning asks for credentials, use your GitHub account's configured
+Git credentials or [GitHub CLI](https://cli.github.com/) with repository access.
+If the folder already exists, follow [Updating](#updating) instead.
 
-Try the editor without input permissions:
+The installer:
+
+1. Installs system libraries on **Debian/Ubuntu and Fedora** using `sudo`.
+2. Creates a local `.venv` and installs the tested Python dependencies.
+3. Adds **Automater** to your application menu, with its own icon and an example action.
+
+Run the installer as your regular user. For other distributions, install the
+[libraries](docs/INSTALL.md#system-libraries) first and run
+`./install.sh --no-system-packages`. Keep the installation folder in place;
+the shortcut points to it. No desktop restart is normally needed.
+
+**Input access is a separate setup step.** Open **Devices → Input access help**
+for recording and real playback. Editing and Test mode work without device access.
+The installer does not change input permissions or launch a recording.
+
+<details>
+<summary>Already cloned it? Want to run without a menu shortcut?</summary>
+
+From the repository folder:
 
 ```bash
-./start.sh --demo
+./install.sh                    # Dependencies + application-menu shortcut
+./install.sh --no-system-packages  # Skip system packages if already installed
+./start.sh                      # Run directly; prepares the Python runtime if needed
+./start.sh --demo               # Explore a sample without sending input
+./start.sh --doctor             # Diagnose your Linux session and device access
 ```
 
-The example opens in **Test mode**: the scheduler and highlights run without sending
-inputs. **File → Getting started** and the empty workspace's **Quick guide** explain
-the controls inside the app. `./start.sh --doctor` prints diagnostics.
-See the [installation guide](docs/INSTALL.md) for manual setup and missing libraries.
-**Devices → Check compatibility** explains your detected desktop and supported
-features. `./start.sh --doctor --check-portal` checks pointer interfaces without
-opening a permission dialog. A working screen-sharing portal alone is insufficient.
+`AUTOMATER_PYTHON=python3.12 ./install.sh` chooses an interpreter explicitly.
+The standard Qt wheels require glibc 2.34+ on x86_64 or 2.39+ on aarch64.
+Ubuntu 22.04 needs a separately installed supported Python. See the
+[installation guide](docs/INSTALL.md) and [distro/desktop matrix](docs/COMPATIBILITY.md).
+
+</details>
+
+## Try it first
+
+Open the menu entry's **Try the example** action, or run:
+
+```bash
+~/.local/share/Automater/start.sh --demo
+```
+
+The example opens in **Test mode**: timing, camera follow and highlights run without
+sending input. **File → Getting started** explains the controls inside the app.
+**Devices → Check compatibility** shows what your desktop supports;
+`./start.sh --doctor --check-portal` checks pointer interfaces without requesting permission.
 
 ## Your first workflow
 
@@ -91,10 +129,10 @@ coordinates. Settings → Start configures an absolute cursor reset per loop.
 ## Themes
 
 Open **File → Appearance & themes**, **Settings → Appearance & themes**, or press
-**Ctrl+,**. Click Studio, Moonlight, Obsidian, Crimson, Dracula, Viper, Nord, Sakura,
+**Ctrl+,**. Click Automater, Moonlight, Obsidian, Crimson, Dracula, Viper, Nord, Sakura,
 Solaris, Catppuccin or Daylight to apply it immediately.
 
-Customize the accent/background, or Reset to Studio. Appearance is remembered
+Customize the accent/background, or Reset to Automater. Appearance is remembered
 locally and keeps your actions, notes, selection and run results intact. Group
 colors remain in their workflow; their labels adapt for readable contrast.
 
@@ -136,8 +174,8 @@ visual frame; timing comes from the replay worker.
 | Ctrl+, | Appearance and themes |
 
 Global F-keys require a selected readable physical keyboard. Local controls also
-work while Studio is focused. Reserved F-keys stay out of recordings and still
-reach the foreground app; Studio does not grab physical devices.
+work while Automater is focused. Reserved F-keys stay out of recordings and still
+reach the foreground app; Automater does not grab physical devices.
 
 ## Background compatibility
 
@@ -150,7 +188,7 @@ reach the foreground app; Studio does not grab physical devices.
 Choose an existing window by title/app; no executable picker is needed. KDE Plasma
 includes native Wayland discovery. Other desktops currently list X11/Xwayland
 windows. Existing native Wayland games cannot receive independent background input
-through Studio. A separate session must launch a new game instance.
+through Automater. A separate session must launch a new game instance.
 
 Mouse paths depend on sensitivity, acceleration, starting state and the game.
 Retaining relative reports and timings does not guarantee pixel-identical paths
@@ -175,14 +213,42 @@ memory; source files change only when you save. Portable files include events,
 group notes and optional loop starting points. Destination handles and appearance
 are not stored in them.
 
-Preferences/recovery live in `$XDG_CONFIG_HOME/moonlight-studio` (normally
-`~/.config/moonlight-studio`); its `scripts/` folder is the default library. Idle
-changes recover separately every five seconds. Finish recording before closing;
+Preferences/recovery live in `$XDG_CONFIG_HOME/automater` (normally
+`~/.config/automater`); its `scripts/` folder is the default library. Settings and
+the default library from earlier versions are copied automatically on first launch;
+the original files are kept. Idle changes recover separately every five seconds. Finish recording before closing;
 force-killing the app can lose an in-progress capture.
 
 Files use private permissions and atomic replacement. There is no telemetry,
 account or cloud upload. Recorded input can contain personal text: review routines
 before sharing. Root-level JSON recordings are ignored by Git.
+
+## Updating
+
+Close Automater, then run:
+
+```bash
+cd "$HOME/.local/share/Automater"
+git pull --ff-only
+./install.sh --no-system-packages
+```
+
+This refreshes Python dependencies and the menu shortcut. If an update needs new
+system libraries, rerun `./install.sh`. Saved workflows and preferences stay separate
+from the installation folder.
+
+## Uninstalling
+
+Close Automater, then remove its application-menu shortcut:
+
+```bash
+cd "$HOME/.local/share/Automater"
+.venv/bin/python -m automater.desktop --remove
+```
+
+You can then delete the installation folder. Your workflows, preferences and recovery
+files in `~/.config/automater` are kept. Export any workflows saved inside the checkout
+before deleting it. System libraries and input permissions are left in place.
 
 ## Development
 

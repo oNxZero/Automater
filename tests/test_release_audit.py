@@ -5,14 +5,14 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextCursor
 from test_gui import clean, window
 
-from moonlight_studio import theme
-from moonlight_studio.action_dialog import ActionDialog
-from moonlight_studio.dialogs import GroupDialog
-from moonlight_studio.engine import DryRun, PlaybackOptions, Replay
-from moonlight_studio.models import Script, Step
-from moonlight_studio.palettes import PALETTES
-from moonlight_studio.preferences import Preferences
-from moonlight_studio.storage import save
+from automater import theme
+from automater.action_dialog import ActionDialog
+from automater.dialogs import GroupDialog
+from automater.engine import DryRun, PlaybackOptions, Replay
+from automater.models import Script, Step
+from automater.palettes import PALETTES
+from automater.preferences import Preferences
+from automater.storage import save
 
 
 def test_themes_apply_to_canvas_without_mutating_work_and_restore_on_restart(
@@ -74,7 +74,7 @@ def test_light_theme_includes_canvas_icons_and_legible_group_labels(qtbot, tmp_p
     assert theme.contrast(theme.legible_group_color("#e8c58a").name(), theme.palette().panel) >= 3
     assert theme.paint_color(theme.MUTED).name() == PALETTES["daylight"].muted
     assert theme.contrast(theme.paint_color("#5d5877").name(), theme.palette().base) >= 3
-    win.apply_appearance("studio")
+    win.apply_appearance("automater")
     assert theme.paint_color(theme.BASE).name() == theme.BASE
     clean(win)
 
@@ -101,7 +101,7 @@ def test_background_override_auto_adjusts_text_and_can_reset(
     win.apply_appearance("dracula", {"base": background})
     assert theme.contrast(theme.palette().text, theme.palette().base) >= 4.5
     assert theme.contrast(theme.palette().muted, theme.palette().base) >= 4.5
-    win.apply_appearance("studio", {})
+    win.apply_appearance("automater", {})
     assert win.preferences.theme_colors == {}
     clean(win)
 
@@ -282,7 +282,7 @@ def test_appearance_is_blocked_during_playback(qtbot, tmp_path, monkeypatch):
     win.toggle_play()
     assert win.busy and not win.appearance_dialog.isEnabled()
     assert not win.apply_appearance("daylight")
-    assert win.preferences.theme == "studio"
+    assert win.preferences.theme == "automater"
     win.stop()
     qtbot.waitUntil(lambda: not win.busy)
     assert win.appearance_dialog.isEnabled()
@@ -298,7 +298,7 @@ def test_themed_canvas_icon_keeps_its_resolved_color(qapp):
         for x in range(20)
         for y in range(20)
     )
-    theme.activate("studio")
+    theme.activate("automater")
 
 
 def test_clearing_imported_description_keeps_editor_available_for_undo(
@@ -329,7 +329,7 @@ def test_quit_with_an_invalid_group_draft_offers_discard_or_keep_editing(
     identifier = win.active_document_id
     win.group_inspector.name.clear()
     win.group_inspector.text.setPlainText("Unfinished draft")
-    monkeypatch.setattr("moonlight_studio.dialogs.SaveChangesDialog.ask", lambda *args: choice)
+    monkeypatch.setattr("automater.dialogs.SaveChangesDialog.ask", lambda *args: choice)
     assert win.confirm_close_documents() is (choice == "discard")
     if choice == "cancel":
         assert identifier in win.documents

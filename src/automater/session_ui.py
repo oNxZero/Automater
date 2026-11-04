@@ -163,7 +163,7 @@ class SessionMixin:
             QMessageBox.question(
                 self,
                 "Close game session?",
-                "This closes the game launched by Studio. Unsaved game progress may be lost.",
+                "This closes the game launched by Automater. Unsaved game progress may be lost.",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )

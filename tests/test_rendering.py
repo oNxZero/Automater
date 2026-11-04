@@ -46,11 +46,11 @@ def test_copying_actions_exits_cleanly_without_clearing_the_clipboard(tmp_path):
                 """
                 import sys
                 from PySide6.QtWidgets import QApplication
-                from moonlight_studio import x11
-                from moonlight_studio.actions import decode_selection
-                from moonlight_studio.dialogs import SaveChangesDialog
-                from moonlight_studio.models import Script, Step
-                from moonlight_studio.window import MainWindow
+                from automater import x11
+                from automater.actions import decode_selection
+                from automater.dialogs import SaveChangesDialog
+                from automater.models import Script, Step
+                from automater.window import MainWindow
 
                 app = QApplication([])
                 x11.windows = lambda: []

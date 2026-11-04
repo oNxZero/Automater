@@ -161,7 +161,7 @@ class GameSession:
             or not 480 <= height <= 2160
         ):
             raise ValueError("Unsupported game resolution")
-        self.directory = Path(tempfile.mkdtemp(prefix="moonlight-game-"))
+        self.directory = Path(tempfile.mkdtemp(prefix="automater-game-"))
         self.address = SessionAddress(str(self.directory / "input.sock"), secrets.token_hex(24))
         args = [
             gamescope,
@@ -180,7 +180,7 @@ class GameSession:
             "--",
             sys.executable,
             "-m",
-            "moonlight_studio.isolated_worker",
+            "automater.isolated_worker",
             "--socket",
             self.address.socket_path,
             "--nonce",

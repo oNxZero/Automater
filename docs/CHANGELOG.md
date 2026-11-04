@@ -1,5 +1,24 @@
 # Earlier release notes
 
+## v0.12.0 · Automater and desktop installation
+
+- The application, repository, Python package/command, window integration and
+  documentation now use Automater. The default theme is also named Automater.
+- First launch copies earlier settings, default-library workflows and recovery
+  files into the new config directory. Original files remain untouched and existing
+  Automater settings take priority. Library paths and the original default theme
+  migrate with them. Portable workflow JSON stays compatible.
+- `install.sh` installs supported distro dependencies, prepares the tested runtime
+  and registers a per-user application-menu entry with an example action. Use
+  `--no-system-packages` to skip system-package installation. Input permissions are
+  configured separately in Devices.
+- README now includes a complete installation code block, update/removal steps and
+  refreshed native Qt screenshots with an Automater icon. Screenshot generation uses
+  synthetic workflows only and is reproducible with `scripts/screenshots.py`.
+- Regression checks cover migration, failed-copy cleanup, real desktop-entry parsing,
+  unusual installation paths, installer failure ordering and shortcut-only removal.
+
+
 Current features and setup are in the [README](../README.md).
 
 ## Fixed in v0.9.1: uninterrupted note editing
@@ -85,7 +104,6 @@ the start of the description. Name-field selections also survive saving.
   inside each tab. Saved tabs use the filename. Open and Save As share an existing,
   remembered folder and handle relative filenames inside that folder.
 
-![Drag origin and proposed action placement](drag-preview.png)
 ![Search open windows](window-picker.png)
 
 ## New in v0.6: separate game sessions, tabs and run results

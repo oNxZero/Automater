@@ -1,7 +1,7 @@
 # Script formats v1–v4
 
 Files use UTF-8 JSON and include `version` and a `steps` array. Existing v1 scripts
-remain compatible. Advanced controls save as v2 and require Studio v0.4 or newer.
+remain compatible. Advanced controls save as v2 and require Automater v0.4 or newer.
 
 ```json
 {
@@ -77,7 +77,7 @@ Version 3 adds an optional top-level `groups` object. Each key is a group identi
 are pruned when editing. Groups never change input order or timing.
 
 Version 4 adds optional plain-text `notes` to each group (at most 20,000 characters).
-Nonempty group notes require Studio v0.9 or newer. For example:
+Nonempty group notes require Automater v0.9 or newer. For example:
 
 ```json
 "groups": {

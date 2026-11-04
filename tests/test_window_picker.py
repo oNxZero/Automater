@@ -5,9 +5,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog
 from test_gui import clean, window
 
-from moonlight_studio.open_windows import DesktopWindow, GuardedDesktopBackend, discover_windows
-from moonlight_studio.window_picker import WindowPicker
-from moonlight_studio.x11 import WindowInfo
+from automater.open_windows import DesktopWindow, GuardedDesktopBackend, discover_windows
+from automater.window_picker import WindowPicker
+from automater.x11 import WindowInfo
 
 
 def seed_windows(win):
@@ -81,7 +81,7 @@ def test_window_discovery_merges_kde_x11_without_duplicates_or_own_window(
     win = window(qtbot, tmp_path, monkeypatch)
     native, _ = seed_windows(win)
     same = WindowInfo(200, native.title, native.pid, native.wm_class)
-    own = WindowInfo(201, "Moonlight Studio", os.getpid(), ("studio",))
+    own = WindowInfo(201, "Automater", os.getpid(), ("automater",))
     assert discover_windows([same, own], win.window_observer) == [native]
     clean(win)
 
@@ -90,7 +90,7 @@ def test_focus_loss_stops_new_inputs_but_allows_cleanup_releases():
     import pytest
     from test_engine import Backend
 
-    from moonlight_studio.models import Step
+    from automater.models import Step
 
     backend = Backend()
     active = [True]
@@ -119,7 +119,7 @@ def test_kde_discovery_and_focus_updates_over_private_bus(qtbot, portal_server):
 
     from dbus_next import Message
 
-    from moonlight_studio.open_windows import CALLBACK, KWIN, WindowObserver
+    from automater.open_windows import CALLBACK, KWIN, WindowObserver
 
     server = portal_server
     calls = []
@@ -151,7 +151,7 @@ def test_kde_discovery_and_focus_updates_over_private_bus(qtbot, portal_server):
             from pathlib import Path
 
             script = Path(message.body[0]).read_text()
-            if message.body[1].startswith("moonlight_activate_"):
+            if message.body[1].startswith("automater_activate_"):
                 server.activation_script = script
                 script_id = 2
             else:
@@ -230,7 +230,7 @@ def test_selected_desktop_window_requires_focus_before_any_input(qtbot, tmp_path
         return backend
 
     factory.startup_delay = 0
-    monkeypatch.setattr("moonlight_studio.window.UInputBackend", factory)
+    monkeypatch.setattr("automater.window.UInputBackend", factory)
     win.test_mode.setChecked(False)
     win.countdown.setValue(0)
     win.toggle_play()

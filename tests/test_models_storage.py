@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from moonlight_studio import storage
-from moonlight_studio.models import Script, Step
+from automater import storage
+from automater.models import Script, Step
 
 
 def test_round_trip_private_atomic_save(tmp_path):

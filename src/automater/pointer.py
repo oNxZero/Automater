@@ -24,7 +24,7 @@ def desktop_pointer():
     if session_type() == "x11" and os.environ.get("DISPLAY"):
         return X11Pointer()
     raise RuntimeError(
-        "No graphical desktop detected. Run Studio inside your X11 or Wayland session."
+        "No graphical desktop detected. Run Automater inside your X11 or Wayland session."
     )
 
 
@@ -38,7 +38,7 @@ def capability():
         )
     if session_type() == "x11" and os.environ.get("DISPLAY"):
         return True, "X11 desktop screen coordinates"
-    return False, "No graphical desktop detected; start Studio inside an X11 or Wayland session."
+    return False, "No graphical desktop detected; start Automater inside an X11 or Wayland session."
 
 
 class X11Pointer:

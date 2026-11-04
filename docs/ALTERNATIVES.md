@@ -11,7 +11,7 @@ platform comparisons, not hands-on game compatibility tests.
 | [Macro Recorder](https://www.macrorecorder.com/) | Windows and macOS | Record, review/edit and repeat mouse/keyboard actions. Its product page also describes image/OCR and other automation features. |
 | [Power Automate desktop flows](https://learn.microsoft.com/en-us/power-automate/desktop-flows/recording-flow) | Desktop and web application automation | Recorder generates editable flow actions tied to UI elements. Relevant to guided workflow design, rather than raw game-input capture. |
 
-Moonlight Studio's current focus is a Linux evdev/uinput recorder with a linear
+Automater's current focus is a Linux evdev/uinput recorder with a linear
 left-to-right macro canvas and a precise raw event view. A tool listing background
 window commands does not establish compatibility with raw-input games, native
 Wayland background routing, or protected games. Those need target-specific testing.

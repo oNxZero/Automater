@@ -5,10 +5,10 @@ from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QGraphicsPathItem, QMessageBox
 from test_gui import clean, window
 
-from moonlight_studio.actions import create_action
-from moonlight_studio.models import Script, Step
-from moonlight_studio.overlay import OverlayGroup, pointer_path
-from moonlight_studio.preferences import Preferences
+from automater.actions import create_action
+from automater.models import Script, Step
+from automater.overlay import OverlayGroup, pointer_path
+from automater.preferences import Preferences
 
 
 def test_batch_hold_changes_only_edited_duration_and_is_one_undo(qtbot, tmp_path, monkeypatch):
@@ -252,7 +252,7 @@ def test_local_f_keys_work_without_device_access(qtbot, tmp_path, monkeypatch):
 
 
 def test_recording_cleanup_releases_modifiers_last():
-    from moonlight_studio.linux_input import Recorder
+    from automater.linux_input import Recorder
 
     recorder = Recorder()
     recorder.start()

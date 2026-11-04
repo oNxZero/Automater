@@ -8,11 +8,16 @@ Version 0.11 adds runtime/session detection, read-only compatibility reporting,
 portal capability checks and a broader distro/display CI matrix. See
 [COMPATIBILITY](COMPATIBILITY.md) for per-feature limits.
 
+Version 0.12 renames the application/repository/package to Automater, preserves
+previous local settings through a one-time copy, and adds per-user desktop-menu
+installation. Automatic system-package setup covers Debian/Ubuntu and Fedora;
+other distributions use the manual libraries guide.
+
 ## Prepared in the repository
 
 - MIT license, project metadata and documentation/issue URLs.
 - Short current-feature README, separate installation/user guides and archived
-  release notes; an offline Getting started guide and theme gallery inside Studio.
+  release notes; an offline Getting started guide and theme gallery inside Automater.
 - Eleven complete themes, color overrides and preference validation. Appearance
   remains outside portable scripts and preserves editor state.
 - Fixes/regressions for grouping subsets, duplicate order/identities, custom group

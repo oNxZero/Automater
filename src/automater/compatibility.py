@@ -40,7 +40,7 @@ def configure_qt_platform(environ=None):
         env["QT_QPA_PLATFORM"] = "xcb"
     else:
         raise RuntimeError(
-            "No graphical desktop detected. Start Studio inside X11/Wayland, or use --doctor for headless diagnostics."
+            "No graphical desktop detected. Start Automater inside X11/Wayland, or use --doctor for headless diagnostics."
         )
 
 

@@ -1,18 +1,18 @@
 # Run a game while using your normal desktop
 
 **Settings → Run → Separate game session · Gamescope** starts a new game display
-with its own input state. Studio sends replay only to that display. Your normal
+with its own input state. Automater sends replay only to that display. Your normal
 desktop cursor, keyboard focus and other virtual desktops remain independent.
 This requires Gamescope, a compatible Vulkan driver/GPU and an X11-capable game.
 
 ## Sober setup
 
 1. Finish or leave your current game and close the existing Sober instance yourself.
-   A running instance cannot be moved into another display; Studio refuses to
+   A running instance cannot be moved into another display; Automater refuses to
    launch a second Sober instance rather than risk reusing the original window.
 2. In Run settings, choose Separate game session and click **Set up game session…**.
 3. Choose **Sober · Flatpak**, select the game resolution, and click **Launch game
-   in session**. Studio does not install packages, edit Sober config or change
+   in session**. Automater does not install packages, edit Sober config or change
    persistent Flatpak permissions.
 4. When the game's window appears, select it in Run settings. A sole session window
    is selected automatically. Only windows inside that session are listed here.
@@ -22,7 +22,7 @@ This requires Gamescope, a compatible Vulkan driver/GPU and an X11-capable game.
 ![Separate game setup](isolated-session.png)
 
 Starting X/Y coordinates in this mode are relative to the game client area, not
-the normal desktop. Studio resets only the session's pointer before each loop.
+the normal desktop. Automater resets only the session's pointer before each loop.
 Desktop pointer permission and /dev/uinput are not used for this transport.
 Physical recording/global hotkeys still require readable input devices.
 
@@ -52,10 +52,10 @@ game state still affect actual results. Raw recorded counts are not a universal
 screen-pixel/camera mapping. Random timing and playback speed intentionally change
 the original timing.
 
-Closing Studio stops automation and leaves the launched game open. **Close game
+Closing Automater stops automation and leaves the launched game open. **Close game
 session** explicitly closes it and asks first because game progress may be lost.
 **Session diagnostics** shows bounded startup logs. If Gamescope reports no Vulkan
-physical device, repair driver/device availability before trying again; Studio
+physical device, repair driver/device availability before trying again; Automater
 will not use the desktop as an alternative destination.
 
 The private input service is tested against a separate Xvfb server, including

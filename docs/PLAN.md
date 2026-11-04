@@ -1,4 +1,4 @@
-# Moonlight Studio product and implementation plan
+# Automater product and implementation plan
 
 ## Goal and scope
 

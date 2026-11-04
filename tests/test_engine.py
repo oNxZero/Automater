@@ -3,8 +3,8 @@ import time
 
 import pytest
 
-from moonlight_studio.engine import PlaybackOptions, Replay
-from moonlight_studio.models import Script, Step
+from automater.engine import PlaybackOptions, Replay
+from automater.models import Script, Step
 
 
 class Backend:

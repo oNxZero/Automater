@@ -39,7 +39,7 @@ evidence, not a claim that every bug has been found.
 - X11 background messages can be ignored by games; native Wayland background
   routing is unavailable. Pointer permission does not change these capabilities.
 - Global hotkeys require a selected readable keyboard. Local fallback works when
-  Studio is focused. Re-recording nonadjacent spans is rejected to keep one clear
+  Automater is focused. Re-recording nonadjacent spans is rejected to keep one clear
   replacement position.
 - Configurable hotkeys and run presets and a real-device compatibility
   report remain useful follow-ups before broader Linux/game reliability claims.
@@ -160,7 +160,7 @@ Publication and real game/compositor acceptance remain owner/manual checks in
 | Wayland Qt startup depended entirely on distro defaults | Prefer the native Wayland plugin, with XCB fallback when available. Explicit user overrides are preserved. Xwayland rendering does not authorize a native pointer warp. |
 | Screen-sharing support was mistaken for pointer-control support | Read RemoteDesktop and ScreenCast capability properties before creating a permission session. The optional UI/doctor probe never requests permission. |
 | Users could not tell distro/runtime limitations from device permissions | Add a read-only compatibility panel, structured doctor report and a feature/distro matrix. |
-| The launcher blindly used an older python3 | Search supported installed interpreters; honor MOONLIGHT_PYTHON; retain unsupported existing virtual environments with repair guidance. |
+| The launcher blindly used an older python3 | Search supported installed interpreters; honor AUTOMATER_PYTHON; retain unsupported existing virtual environments with repair guidance. |
 | Qt wheel ABI differences appeared as generic pip/import failures | Check fresh-install architecture/libc floors from the pinned wheel release. Preserve already installed native builds. |
 | Empty/relative XDG_CONFIG_HOME wrote configuration into the working directory | Follow XDG semantics: use the normal home config directory unless the override is absolute. |
 | Only Ubuntu offscreen rendering had CI coverage | Add Ubuntu 22.04/24.04 matrices, Debian/Fedora installation smoke checks and private native XCB/Weston GUI launches. |

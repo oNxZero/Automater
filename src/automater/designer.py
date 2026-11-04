@@ -72,12 +72,12 @@ def build_ui(w):
     body.setContentsMargins(24, 18, 24, 18)
     body.setSpacing(14)
     top = QHBoxLayout()
-    moon = label("")
-    moon.setProperty("themeGlyph", "moon")
-    moon.setProperty("themeSize", 24)
-    moon.setPixmap(icon("moon", ACCENT, 24).pixmap(24, 24))
-    top.addWidget(moon)
-    top.addWidget(label("Moonlight Studio", "brand"))
+    brand_icon = label("")
+    brand_icon.setProperty("themeGlyph", "automation")
+    brand_icon.setProperty("themeSize", 24)
+    brand_icon.setPixmap(icon("automation", ACCENT, 24).pixmap(24, 24))
+    top.addWidget(brand_icon)
+    top.addWidget(label("Automater", "brand"))
     top.addSpacing(24)
     w.nav_group = QButtonGroup(w)
     w.nav_buttons = []
@@ -454,7 +454,7 @@ def build_run_settings(w):
     session.addWidget(label("Separate game session", "heading"))
     session.addWidget(
         label(
-            "Advanced: launch a new game instance with independent mouse and keyboard. To use a game that is already open, choose Active desktop or Existing window in Run settings instead. Closing Studio leaves the game open."
+            "Advanced: launch a new game instance with independent mouse and keyboard. To use a game that is already open, choose Active desktop or Existing window in Run settings instead. Closing Automater leaves the game open."
         )
     )
     compact_session.addWidget(

@@ -1,4 +1,4 @@
-"""Input service launched ONLY inside Studio's nested Gamescope display."""
+"""Input service launched ONLY inside Automater's nested Gamescope display."""
 
 import argparse
 import hmac

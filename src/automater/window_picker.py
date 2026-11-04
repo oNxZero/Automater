@@ -104,7 +104,7 @@ class WindowPicker(QDialog):
         )
         if not visible and session_type() == "wayland" and not kde_desktop():
             self.status.setText(
-                "This desktop does not expose native Wayland windows to Studio. X11/Xwayland windows can appear here; use Any active window for other apps, then focus your game during the countdown."
+                "This desktop does not expose native Wayland windows to Automater. X11/Xwayland windows can appear here; use Any active window for other apps, then focus your game during the countdown."
             )
         self.selection_changed()
 
@@ -125,11 +125,11 @@ class WindowPicker(QDialog):
         self.hint.setText(
             "Independent game session · your desktop mouse and keyboard remain free."
             if self.mode == 2
-            else "This window needs desktop playback. Studio can bring it forward automatically after the countdown. Your normal pointer is used."
+            else "This window needs desktop playback. Automater can bring it forward automatically after the countdown. Your normal pointer is used."
             if self.mode == 1 and desktop_only
             else "Background delivery · some apps and games ignore these events."
             if self.mode == 1
-            else "Studio can bring this window forward after the countdown. Desktop playback uses your normal pointer and stops if you switch away. Independent input needs a background mode."
+            else "Automater can bring this window forward after the countdown. Desktop playback uses your normal pointer and stops if you switch away. Independent input needs a background mode."
         )
 
     def accept_choice(self):

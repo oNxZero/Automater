@@ -28,7 +28,7 @@ class Preferences:
     script_directory: str | None = None
     recent_scripts: list[str] = field(default_factory=list)
     library_folders: list[str] = field(default_factory=list)
-    theme: str = "studio"
+    theme: str = "automater"
     theme_colors: dict[str, str] = field(default_factory=dict)
 
     def validate(self):
@@ -121,6 +121,8 @@ class Preferences:
         ):
             raise ValueError("Unsupported preferences version")
         legacy = data.pop("version") == 1
+        if data.get("theme") == "studio":
+            data["theme"] = "automater"
         if set(data) - set(cls.__dataclass_fields__):
             raise ValueError("Unknown preference fields")
         try:

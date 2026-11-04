@@ -62,7 +62,7 @@ class AppearanceDialog(QDialog):
     def __init__(self, window):
         super().__init__(window)
         self.window = window
-        self.setWindowTitle("Appearance · Moonlight Studio")
+        self.setWindowTitle("Appearance · Automater")
         self.resize(620, 640)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 22, 24, 22)
@@ -97,7 +97,9 @@ class AppearanceDialog(QDialog):
         )
         colors = QHBoxLayout()
         self.accent = button("Accent color…", lambda: self.pick_color("accent"), glyph="spark")
-        self.background = button("Background color…", lambda: self.pick_color("base"), glyph="moon")
+        self.background = button(
+            "Background color…", lambda: self.pick_color("base"), glyph="automation"
+        )
         colors.addWidget(self.accent)
         colors.addWidget(self.background)
         body.addLayout(colors)
@@ -108,7 +110,7 @@ class AppearanceDialog(QDialog):
         layout.addWidget(scroll, 1)
         actions = QHBoxLayout()
         actions.addWidget(
-            button("Reset to Studio", lambda: window.apply_appearance("studio", {}), "ghost")
+            button("Reset to Automater", lambda: window.apply_appearance("automater", {}), "ghost")
         )
         actions.addStretch()
         actions.addWidget(button("Done", self.accept, "primary", glyph="check"))
@@ -176,7 +178,7 @@ class AppearanceMixin:
         ):
             palette.setColor(role, QColor(value))
         self.setPalette(palette)
-        self.setWindowIcon(theme.icon("moon", theme.ACCENT))
+        self.setWindowIcon(theme.icon("automation", theme.ACCENT))
         for widget in self.findChildren(QPushButton):
             glyph = widget.property("themeGlyph")
             if glyph:

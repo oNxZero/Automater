@@ -13,7 +13,7 @@ from .widgets import button, label
 class CompatibilityDialog(QDialog):
     def __init__(self, window):
         super().__init__(window)
-        self.setWindowTitle("Linux compatibility · Moonlight Studio")
+        self.setWindowTitle("Linux compatibility · Automater")
         self.resize(650, 580)
         self.generation = 0
         self.report = environment_report()

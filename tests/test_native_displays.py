@@ -79,7 +79,7 @@ def test_native_wayland_gui_on_headless_weston(tmp_path):
         **os.environ,
         "XDG_RUNTIME_DIR": str(runtime),
         "XDG_SESSION_TYPE": "wayland",
-        "WAYLAND_DISPLAY": "moonlight-test",
+        "WAYLAND_DISPLAY": "automater-test",
         "QT_QPA_PLATFORM": "wayland",
     }
     env.pop("DISPLAY", None)
@@ -89,7 +89,7 @@ def test_native_wayland_gui_on_headless_weston(tmp_path):
             "--no-config",
             "--backend=headless-backend.so",
             "--renderer=pixman",
-            "--socket=moonlight-test",
+            "--socket=automater-test",
             "--idle-time=0",
             "--width=1280",
             "--height=800",
@@ -102,12 +102,12 @@ def test_native_wayland_gui_on_headless_weston(tmp_path):
     try:
         deadline = time.monotonic() + 5
         while (
-            not (runtime / "moonlight-test").exists()
+            not (runtime / "automater-test").exists()
             and time.monotonic() < deadline
             and server.poll() is None
         ):
             time.sleep(0.02)
-        assert (runtime / "moonlight-test").exists(), (
+        assert (runtime / "automater-test").exists(), (
             log.read_text() if log.exists() else "Weston did not start"
         )
         run_gui(env, "wayland")

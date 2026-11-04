@@ -5,11 +5,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from test_gui import clean, window
 
-from moonlight_studio.action_dialog import ActionDialog
-from moonlight_studio.actions import create_action, decode_steps, encode_steps, randomize_steps
-from moonlight_studio.models import Script, Step
-from moonlight_studio.storage import load, save
-from moonlight_studio.workflow import blocks_for
+from automater.action_dialog import ActionDialog
+from automater.actions import create_action, decode_steps, encode_steps, randomize_steps
+from automater.models import Script, Step
+from automater.storage import load, save
+from automater.workflow import blocks_for
 
 
 def test_press_hold_release_timer_and_extended_keys():

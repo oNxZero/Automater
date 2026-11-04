@@ -4,12 +4,12 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QTextCursor
 from test_gui import clean, window
 
-from moonlight_studio.camera import CameraFollower
-from moonlight_studio.connections import FlowConnection, connection_state
-from moonlight_studio.engine import DryRun, PlaybackOptions, Replay
-from moonlight_studio.models import Script, Step
-from moonlight_studio.storage import load, save
-from moonlight_studio.workflow import blocks_for
+from automater.camera import CameraFollower
+from automater.connections import FlowConnection, connection_state
+from automater.engine import DryRun, PlaybackOptions, Replay
+from automater.models import Script, Step
+from automater.storage import load, save
+from automater.workflow import blocks_for
 
 
 def trace(**changes):

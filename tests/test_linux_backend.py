@@ -1,7 +1,7 @@
 from evdev import InputEvent, ecodes
 
-from moonlight_studio import linux_input
-from moonlight_studio.models import Step
+from automater import linux_input
+from automater.models import Step
 
 
 def test_uinput_translation_and_close(monkeypatch):

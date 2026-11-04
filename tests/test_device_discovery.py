@@ -9,7 +9,7 @@ import pytest
 from evdev import InputDevice, ecodes
 from evdev.device import DeviceInfo as HardwareInfo
 
-from moonlight_studio import linux_input
+from automater import linux_input
 
 
 def real_api_device(path, fd=None, name="USB Keyboard", keys=None, phys="usb-1/input0"):

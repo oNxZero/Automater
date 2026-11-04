@@ -1,16 +1,16 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
-from moonlight_studio import storage
-from moonlight_studio.models import Step
-from moonlight_studio.window import MainWindow
+from automater import storage
+from automater.models import Step
+from automater.window import MainWindow
 
 
 def window(qtbot, tmp_path, monkeypatch):
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Discard)
-    monkeypatch.setattr("moonlight_studio.dialogs.SaveChangesDialog.ask", lambda *args: "discard")
-    monkeypatch.setattr("moonlight_studio.window.devices", lambda: [])
-    monkeypatch.setattr("moonlight_studio.window.x11.windows", lambda: [])
+    monkeypatch.setattr("automater.dialogs.SaveChangesDialog.ask", lambda *args: "discard")
+    monkeypatch.setattr("automater.window.devices", lambda: [])
+    monkeypatch.setattr("automater.window.x11.windows", lambda: [])
     win = MainWindow(config_dir=tmp_path, demo=True)
     qtbot.addWidget(win)
     win.show()

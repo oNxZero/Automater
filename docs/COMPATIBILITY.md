@@ -1,6 +1,6 @@
 # Linux compatibility
 
-Studio targets modern Linux desktop systems using X11 or Wayland. "Linux" does
+Automater targets modern Linux desktop systems using X11 or Wayland. "Linux" does
 not imply every distribution, libc, CPU, desktop API or game accepts every feature.
 Core recording uses evdev and desktop playback uses uinput, independent of the
 desktop toolkit. Input permissions and a kernel exposing these devices are required.
@@ -11,13 +11,13 @@ The pinned PySide6-Essentials 6.11.2 wheels published on PyPI are:
 
 | CPU | Standard wheel requirement |
 | --- | --- |
-| x86_64 | glibc 2.34+, Python 3.11+ for Studio |
-| aarch64 | glibc 2.39+, Python 3.11+ for Studio |
+| x86_64 | glibc 2.34+, Python 3.11+ for Automater |
+| aarch64 | glibc 2.39+, Python 3.11+ for Automater |
 | 32-bit / other CPUs | No standard wheel in this release; a compatible native Qt/PySide build is needed |
 | musl / Alpine | Official wheels use glibc; the standard pip installer is unsupported |
 
 The launcher detects an installed supported Python instead of assuming `python3`
-is new enough. `MOONLIGHT_PYTHON=/path/to/python` explicitly chooses an interpreter.
+is new enough. `AUTOMATER_PYTHON=/path/to/python` explicitly chooses an interpreter.
 It checks standard-wheel ABI requirements before attempting a fresh install and
 does not reject an already installed custom Qt build solely by wheel requirements.
 An unsupported existing virtual environment is left intact with repair instructions.
@@ -74,9 +74,9 @@ Headless diagnostics:
 The optional portal check is time-bounded. A present interface still does not prove
 the desktop will grant a session or a game will accept its input. The check verifies
 RemoteDesktop pointer capability and ScreenCast physical-monitor capability before
-Studio asks for permission. Missing interfaces produce an actionable error.
+Automater asks for permission. Missing interfaces produce an actionable error.
 
-Portal monitor position/size metadata is optional in the protocol. Studio still
+Portal monitor position/size metadata is optional in the protocol. Automater still
 requires unambiguous geometry for exact global reset; it refuses to guess when a
 backend omits it. Relative replay remains available with reset disabled.
 

@@ -1,4 +1,4 @@
-"""Studio dialogs with explicit actions, keyboard defaults and consistent spacing."""
+"""Automater dialogs with explicit actions, keyboard defaults and consistent spacing."""
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QDialog, QHBoxLayout, QLineEdit, QTextEdit, QVBoxLayout

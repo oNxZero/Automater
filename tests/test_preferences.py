@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from moonlight_studio.preferences import Preferences
+from automater.preferences import Preferences
 
 
 def test_preferences_round_trip_and_private_file(tmp_path):

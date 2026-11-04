@@ -7,7 +7,7 @@ from .widgets import button, label
 
 def getting_started(window):
     dialog = QDialog(window)
-    dialog.setWindowTitle("Getting started · Moonlight Studio")
+    dialog.setWindowTitle("Getting started · Automater")
     dialog.resize(600, 610)
     layout = QVBoxLayout(dialog)
     layout.setContentsMargins(24, 24, 24, 24)

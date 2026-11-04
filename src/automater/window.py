@@ -86,7 +86,7 @@ class MainWindow(
 ):
     def __init__(self, config_dir=None, demo=False):
         super().__init__()
-        self.config_dir = Path(config_dir) if config_dir else storage.data_dir()
+        self.config_dir = Path(config_dir) if config_dir else storage.prepare_data_dir()
         self.library_dir = self.config_dir / "scripts"
         self.demo = demo
         self.library_entries = {}
@@ -160,8 +160,8 @@ class MainWindow(
         self.active_block = None
         self._sync_selection = False
         self.blocks = []
-        self.setWindowIcon(icon("moon", "#b5a4fa"))
-        self.setWindowTitle("Moonlight Studio")
+        self.setWindowIcon(icon("automation", "#b5a4fa"))
+        self.setWindowTitle("Automater")
         self.resize(1240, 800)
         self.setMinimumSize(1000, 680)
         self.appearance_dialog = None
@@ -393,7 +393,7 @@ class MainWindow(
         self.update_stats()
         title = self.name.text().strip() or "Untitled script"
         is_dirty = self.dirty()
-        self.setWindowTitle(f"{'● ' if is_dirty else ''}{title} — Moonlight Studio")
+        self.setWindowTitle(f"{'● ' if is_dirty else ''}{title} — Automater")
         self.saved_badge.setText("Unsaved changes")
         self.saved_badge.setVisible(is_dirty)
         self.update_document_title(is_dirty)
@@ -1483,7 +1483,7 @@ class MainWindow(
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Linux input setup")
         dialog.setText(
-            "Moonlight Studio needs read access to selected /dev/input/event* devices "
+            "Automater needs read access to selected /dev/input/event* devices "
             "and write access to /dev/uinput. Existing Moonlight permissions may already cover this. "
             "Do not run the GUI as root."
         )

@@ -1,15 +1,24 @@
-# Install Moonlight Studio
+# Install Automater
 
-Linux and Python 3.11+ are required. Start from the repository folder:
+Linux and Python 3.11+ are required. For dependencies and an application-menu shortcut,
+start from the repository folder:
 
 ```bash
-./start.sh
+./install.sh
 ```
+
+The installer requests sudo for system packages on Debian/Ubuntu or Fedora, prepares
+the Python runtime and creates a per-user menu entry. It leaves device permissions
+unchanged. On other distributions, install the libraries below and use
+`./install.sh --no-system-packages`. The app stays in the checkout; rerun the installer
+after moving it. The menu entry includes **Try the example** without input output.
+
+To run directly without menu integration, use `./start.sh`.
 
 The launcher creates `.venv`, installs the tested runtime and checks dependency
 versions after updates. It never installs system packages or changes permissions.
 It searches for a supported Python if `python3` is older than 3.11; use
-`MOONLIGHT_PYTHON=python3.12 ./start.sh` to choose one explicitly. The standard Qt
+`AUTOMATER_PYTHON=python3.12 ./start.sh` to choose one explicitly. The standard Qt
 wheels require glibc 2.34+ (x86_64) or 2.39+ (aarch64). Alpine/musl, older glibc and
 other CPUs require a compatible native build instead. See [compatibility](COMPATIBILITY.md).
 
@@ -18,7 +27,7 @@ other CPUs require a compatible native build instead. See [compatibility](COMPAT
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -c requirements.lock -e .
-.venv/bin/moonlight-studio
+.venv/bin/automater
 ```
 
 For an input-free example, append `--demo`. To inspect device/session diagnostics,
@@ -58,11 +67,14 @@ shutdown tests. The current constraint avoids a reproduced Qt 6.12 binding crash
 
 ## Updating and removal
 
-Pull the latest repository changes, close Studio and run `./start.sh` again.
+Close Automater, run `git pull --ff-only`, then `./install.sh --no-system-packages`
+to refresh dependencies and the menu shortcut. Rerun without that flag if system
+libraries have changed.
 Workflow JSON files remain compatible. Appearance and preferences are stored
-outside the checkout under `$XDG_CONFIG_HOME/moonlight-studio`.
+outside the checkout under `$XDG_CONFIG_HOME/automater`.
 
-To remove the local install, close Studio and remove its checkout/virtual environment.
+To remove the menu shortcut, run `.venv/bin/python -m automater.desktop --remove`.
+Then close Automater and remove its checkout/virtual environment.
 Keep exported workflows and the config directory if you want recovery/preferences.
 System input rules, if manually installed, are separate administrator settings.
 
@@ -79,7 +91,7 @@ One optional persistent setup, similar to the original Moonlight installer:
 sudo modprobe uinput
 sudo groupadd -f input
 sudo usermod -aG input "$USER"
-sudo tee /etc/udev/rules.d/99-moonlight-studio.rules >/dev/null <<'RULES'
+sudo tee /etc/udev/rules.d/99-automater.rules >/dev/null <<'RULES'
 SUBSYSTEM=="misc", KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
 SUBSYSTEM=="input", KERNEL=="event*", GROUP="input", MODE="0660"
 RULES
@@ -89,7 +101,7 @@ sudo udevadm trigger
 
 Log out and back in for group membership to take effect, then refresh devices.
 If your system does not load uinput on boot, an administrator can add `uinput` to
-`/etc/modules-load.d/moonlight-studio.conf`. Existing distribution/udev policies
+`/etc/modules-load.d/automater.conf`. Existing distribution/udev policies
 may require different rules. This setup grants broad access to physical input,
 including keyboard activity across applications; restrict it to trusted users.
 The launcher never changes system permissions itself. Stop recording before typing

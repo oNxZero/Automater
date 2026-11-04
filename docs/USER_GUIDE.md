@@ -1,4 +1,4 @@
-# Using Moonlight Studio
+# Using Automater
 
 ## Start with the example
 
@@ -139,10 +139,10 @@ only a mouse is selected, global keyboard shortcuts will not work.
 save. The default is your library. **File → Save as** writes a separate copy. Library searches filenames and workflow titles; double-click a result to open it.
 It indexes known save locations and recently opened files, including older workflows
 saved beside the launcher. **Add folder…** includes another directory, and Refresh
-picks up files added outside Studio. Only valid workflow JSON appears; preferences
+picks up files added outside Automater. Only valid workflow JSON appears; preferences
 and recovery files stay out of the list. Import opens an
 existing JSON script. Existing version-1 files remain readable. Advanced controls, timing ranges and
-starting points use version 2 when saved; they require Studio v0.4 or newer.
+starting points use version 2 when saved; they require Automater v0.4 or newer.
 Named groups use version 3; group explanations use version 4 and require v0.9 or
 newer. Existing files are not rewritten when Library indexes them or converts
 older inline note cards for display. Save explicitly to persist the conversion.
@@ -156,7 +156,7 @@ unsaved work. See [storage and privacy](../README.md#files-and-privacy).
 
 ## Common questions
 
-**Why does recording say setup is needed?** Studio needs access to physical devices.
+**Why does recording say setup is needed?** Automater needs access to physical devices.
 Use Devices → Input access help. Test mode and editing work without those permissions.
 
 **Why does a key appear as a press and a release instead of one card?** Other events
@@ -232,7 +232,7 @@ a late result from a cancelled pick is ignored.
 Coordinates are saved with the script. X11 and Hyprland support direct positioning.
 On KDE or another Wayland desktop, use **Connect Wayland pointer**, approve pointer
 control and select physical monitors. This requires a compatible desktop portal.
-The connection is temporary and closes with Studio. No screen frames are read or saved.
+The connection is temporary and closes with Automater. No screen frames are read or saved.
 Use **Choose on screen** to click a location, and **Show starting point** to check it.
 A portal acknowledgment is not a guarantee that a game accepted the move. Background
 coordinates are relative to the selected X11 window's client area and do not move
@@ -373,7 +373,7 @@ During recording, a preview above the editor shows the most recent actions, tota
 captured events, elapsed time and currently held inputs. The original workflow stays
 intact until you finish. **F6** adds the captured events using the append/re-record
 mode you chose; **Discard** keeps the previous workflow. In-progress capture remains
-in memory, so finish the recording before closing Studio.
+in memory, so finish the recording before closing Automater.
 
 ![Live recording preview](recording-preview.png)
 
@@ -387,7 +387,7 @@ The updated internal workflow title is persisted when you Save. Closing a tab do
 not delete its saved JSON file.
 
 The unsaved badge sits beside the summary below the workflow title. Closing changed
-work opens Studio's save dialog: **Save workflow** writes your changes, **Discard
+work opens Automater's save dialog: **Save workflow** writes your changes, **Discard
 changes** keeps the last saved file, and **Keep editing** or Escape cancels closing.
 Cancelling the file chooser during Save also leaves the tab open.
 
@@ -410,10 +410,10 @@ event as a separate rendered frame.
 ## Appearance and the quick guide
 
 Open **File → Appearance & themes**, use the Appearance button in Run settings, or
-press **Ctrl+,**. The gallery includes Studio plus Moonlight, Obsidian, Crimson,
+press **Ctrl+,**. The gallery includes Automater plus Moonlight, Obsidian, Crimson,
 Dracula, Viper, Nord, Sakura, Solaris, Catppuccin and Daylight. Click a card to apply
 it; accent and background color pickers add local overrides. Choosing another
-gallery card clears the overrides. Reset to Studio restores the original look.
+gallery card clears the overrides. Reset to Automater restores the original look.
 
 Theme changes preserve actions, input timing, selection, notes, Undo and last-run
 results. Appearance is stored in Preferences, not exported JSON workflows. Group

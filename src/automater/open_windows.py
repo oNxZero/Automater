@@ -16,7 +16,7 @@ from PySide6.QtCore import QObject, Signal
 
 KWIN = "org.kde.KWin"
 SCRIPTING = "org.kde.kwin.Scripting"
-CALLBACK = "io.github.moonlightstudio.Windows"
+CALLBACK = "io.github.onxzero.Automater.Windows"
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ def observer_script(service):
 function snapshot() {
     const active = workspace.activeWindow;
     const windows = workspace.windowList().filter(w => !w.deleted && !w.specialWindow);
-    callDBus(SERVICE, "/Windows", "io.github.moonlightstudio.Windows", "Snapshot",
+    callDBus(SERVICE, "/Windows", "io.github.onxzero.Automater.Windows", "Snapshot",
         JSON.stringify({active: active ? String(active.internalId) : "",
           windows: windows.map(w => ({id: String(w.internalId), title: w.caption,
             pid: w.pid, app: String(w.resourceClass)}))}));
@@ -125,12 +125,12 @@ class WindowObserver(QObject):
             ) from exc
 
     async def _activate(self, target):
-        name = "moonlight_activate_" + uuid.uuid4().hex
+        name = "automater_activate_" + uuid.uuid4().hex
         path, loaded = None, False
         script = activation_script(target)
         try:
             with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".js", prefix="moonlight-activate-", delete=False
+                mode="w", suffix=".js", prefix="automater-activate-", delete=False
             ) as file:
                 path = Path(file.name)
                 file.write(script)
@@ -169,8 +169,8 @@ class WindowObserver(QObject):
         self.stop_event = asyncio.Event()
         bus = None
         loaded = False
-        name = "moonlight_windows_" + uuid.uuid4().hex
-        service = "io.github.moonlightstudio.Windows.s" + uuid.uuid4().hex
+        name = "automater_windows_" + uuid.uuid4().hex
+        service = "io.github.onxzero.Automater.Windows.s" + uuid.uuid4().hex
         path = None
         try:
             bus = await MessageBus(bus_address=self.bus_address).connect()
@@ -252,7 +252,7 @@ class WindowObserver(QObject):
                 "org.freedesktop.DBus",
             )
             with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".js", prefix="moonlight-windows-", delete=False
+                mode="w", suffix=".js", prefix="automater-windows-", delete=False
             ) as file:
                 path = Path(file.name)
                 file.write(observer_script(service))

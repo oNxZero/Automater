@@ -1,12 +1,12 @@
 name: Bug report
-description: Report a reproducible problem in Studio
+description: Report a reproducible problem in Automater
 labels: [bug]
 body:
   - type: input
     id: version
     attributes:
-      label: Studio version
-      placeholder: 0.10.0
+      label: Automater version
+      placeholder: 0.12.0
     validations:
       required: true
   - type: input

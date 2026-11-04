@@ -15,7 +15,13 @@ def data_dir():
         if configured and Path(configured).is_absolute()
         else Path.home() / ".config"
     )
-    return root / "moonlight-studio"
+    return root / "automater"
+
+
+def prepare_data_dir():
+    from .legacy import migrate_config
+
+    return migrate_config(data_dir().parent)
 
 
 def load(path):
@@ -44,7 +50,7 @@ def write_json(data, path):
     if len(content.encode("utf-8")) > MAX_BYTES:
         raise ValueError("Script exceeds the 32 MiB file limit")
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".moonlight-", dir=path.parent)
+    fd, temporary = tempfile.mkstemp(prefix=".automater-", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(content)

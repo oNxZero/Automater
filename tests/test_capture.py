@@ -1,6 +1,6 @@
 from evdev import InputEvent, ecodes
 
-from moonlight_studio.linux_input import Recorder
+from automater.linux_input import Recorder
 
 
 def event(code, value, kind=ecodes.EV_KEY):
@@ -74,7 +74,7 @@ def test_kernel_timestamps_preserve_batch_spacing():
 def test_monitor_routes_physical_events_and_hotkeys(monkeypatch):
     import time
 
-    from moonlight_studio import linux_input
+    from automater import linux_input
 
     recorder = Recorder()
     recorder.start()
@@ -114,7 +114,7 @@ def test_monitor_routes_physical_events_and_hotkeys(monkeypatch):
 def test_armed_recording_uses_deadline_without_waiting_for_gui(monkeypatch):
     import pytest
 
-    from moonlight_studio import linux_input
+    from automater import linux_input
 
     monkeypatch.setattr(linux_input.time, "monotonic", lambda: 102.0)
     recorder = Recorder()
@@ -129,7 +129,7 @@ def test_armed_recording_uses_deadline_without_waiting_for_gui(monkeypatch):
 
 
 def test_monitor_interleaves_ready_keyboard_and_mouse_batches_by_kernel_timestamp(monkeypatch):
-    from moonlight_studio import linux_input
+    from automater import linux_input
 
     recorder = Recorder()
     recorder.start(start_at=100)
@@ -175,7 +175,7 @@ def test_monitor_interleaves_ready_keyboard_and_mouse_batches_by_kernel_timestam
 
 
 def test_monitor_drains_full_evdev_batches_before_merging_newer_key_events(monkeypatch):
-    from moonlight_studio import linux_input
+    from automater import linux_input
 
     recorder = Recorder()
     recorder.start(start_at=100)

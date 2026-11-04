@@ -4,9 +4,10 @@ import json
 from dataclasses import asdict, replace
 from uuid import uuid4
 
+from .legacy import LEGACY_SELECTION
 from .models import KEY_CODES, MAX_STEPS, Script, Step, number
 
-CLIPBOARD_MIME = "application/x-moonlight-studio-actions"
+CLIPBOARD_MIME = "application/x-automater-actions"
 MAX_CLIPBOARD_BYTES = 32 * 1024 * 1024
 KINDS = (
     ("Hold key / button", "key"),
@@ -45,7 +46,7 @@ def encode_steps(steps, groups=None):
     groups = {key: value for key, value in (groups or {}).items() if key in used}
     Script(steps=list(steps), groups=groups).validate()
     data = {
-        "format": "moonlight-selection",
+        "format": "automater-selection",
         "version": 1,
         "steps": [
             {
@@ -76,13 +77,13 @@ def decode_selection(content):
                 if data.get("version") == 1
                 else set(data) != {"format", "version", "steps", "groups"}
             )
-            or data["format"] != "moonlight-selection"
+            or data["format"] not in ("automater-selection", LEGACY_SELECTION)
             or type(data["version"]) is not int
             or data["version"] not in (1, 2)
             or not isinstance(data["steps"], list)
             or not 0 < len(data["steps"]) <= MAX_STEPS
         ):
-            raise ValueError("Clipboard does not contain Moonlight actions")
+            raise ValueError("Clipboard does not contain Automater actions")
         steps = [Step.from_dict(s) for s in data["steps"]]
         groups = data.get("groups", {})
         Script(steps=steps, groups=groups).validate()

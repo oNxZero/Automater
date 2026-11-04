@@ -2,8 +2,8 @@ from evdev import InputEvent, ecodes
 from PySide6.QtCore import Qt
 from test_gui import clean, window
 
-from moonlight_studio.linux_input import DeviceInfo
-from moonlight_studio.window import MainWindow
+from automater.linux_input import DeviceInfo
+from automater.window import MainWindow
 
 
 class Monitor:
@@ -26,8 +26,8 @@ MOUSE = DeviceInfo("event2", "Mouse", True, "mouse-stable", mouse=True)
 
 def test_device_selection_is_applied_and_survives_renumbering(qtbot, tmp_path, monkeypatch):
     win = window(qtbot, tmp_path, monkeypatch)
-    monkeypatch.setattr("moonlight_studio.window.DeviceMonitor", Monitor)
-    monkeypatch.setattr("moonlight_studio.window.devices", lambda: [KEYBOARD, MOUSE])
+    monkeypatch.setattr("automater.window.DeviceMonitor", Monitor)
+    monkeypatch.setattr("automater.window.devices", lambda: [KEYBOARD, MOUSE])
     win.refresh_devices()
     assert win.monitor_ok and win.monitor.paths == ["event1", "event2"]
     win.device_list.item(1).setCheckState(Qt.Unchecked)
@@ -35,7 +35,7 @@ def test_device_selection_is_applied_and_survives_renumbering(qtbot, tmp_path, m
     assert win.monitor.paths == ["event1"]
     assert win.preferences.device_ids == ["keyboard-stable"]
     monkeypatch.setattr(
-        "moonlight_studio.window.devices",
+        "automater.window.devices",
         lambda: [DeviceInfo("event9", "Keyboard", True, "keyboard-stable", keyboard=True), MOUSE],
     )
     win.refresh_devices()
@@ -47,15 +47,15 @@ def test_device_selection_is_applied_and_survives_renumbering(qtbot, tmp_path, m
 
 def test_permission_repair_makes_device_selectable(qtbot, tmp_path, monkeypatch):
     win = window(qtbot, tmp_path, monkeypatch)
-    monkeypatch.setattr("moonlight_studio.window.DeviceMonitor", Monitor)
+    monkeypatch.setattr("automater.window.DeviceMonitor", Monitor)
     monkeypatch.setattr(
-        "moonlight_studio.window.devices",
+        "automater.window.devices",
         lambda: [DeviceInfo("event1", "Keyboard", False, issue="Permission needed")],
     )
     win.refresh_devices()
     assert not win.device_list.item(0).flags() & Qt.ItemIsEnabled
     assert win.preferences.device_ids is None
-    monkeypatch.setattr("moonlight_studio.window.devices", lambda: [KEYBOARD])
+    monkeypatch.setattr("automater.window.devices", lambda: [KEYBOARD])
     win.refresh_devices()
     assert win.device_list.item(0).checkState() == Qt.Checked
     assert win.monitor_ok
@@ -69,8 +69,8 @@ def test_monitor_failure_never_claims_ready(qtbot, tmp_path, monkeypatch):
         def start(self):
             raise PermissionError("event1 denied")
 
-    monkeypatch.setattr("moonlight_studio.window.DeviceMonitor", Failed)
-    monkeypatch.setattr("moonlight_studio.window.devices", lambda: [KEYBOARD])
+    monkeypatch.setattr("automater.window.DeviceMonitor", Failed)
+    monkeypatch.setattr("automater.window.devices", lambda: [KEYBOARD])
     win.refresh_devices()
     assert not win.monitor_ok
     assert "Could not connect" in win.notice.text()
@@ -81,8 +81,8 @@ def test_monitor_failure_never_claims_ready(qtbot, tmp_path, monkeypatch):
 
 def test_stale_monitor_messages_cannot_stop_new_listener(qtbot, tmp_path, monkeypatch):
     win = window(qtbot, tmp_path, monkeypatch)
-    monkeypatch.setattr("moonlight_studio.window.DeviceMonitor", Monitor)
-    monkeypatch.setattr("moonlight_studio.window.devices", lambda: [KEYBOARD])
+    monkeypatch.setattr("automater.window.DeviceMonitor", Monitor)
+    monkeypatch.setattr("automater.window.devices", lambda: [KEYBOARD])
     win.refresh_devices()
     old = win.monitor_generation
     win.refresh_devices()

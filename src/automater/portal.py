@@ -127,7 +127,7 @@ class PortalConnection(QObject):
             self.loop.stop()
 
     async def request(self, member, signature, body, options, interface=REMOTE):
-        token = "moonlight_" + uuid.uuid4().hex
+        token = "automater_" + uuid.uuid4().hex
         sender = self.bus.unique_name[1:].replace(".", "_")
         path = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
         options = {**options, "handle_token": Variant("s", token)}
@@ -181,7 +181,7 @@ class PortalConnection(QObject):
                 "CreateSession",
                 "a{sv}",
                 [],
-                {"session_handle_token": Variant("s", "moonlight_" + uuid.uuid4().hex)},
+                {"session_handle_token": Variant("s", "automater_" + uuid.uuid4().hex)},
             )
             self.session = created["session_handle"]
             await self.request(

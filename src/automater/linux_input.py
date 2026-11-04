@@ -14,9 +14,10 @@ from evdev import InputDevice, UInput, ecodes, list_devices
 
 from .compatibility import environment_report, session_type
 from .engine import MODIFIER_KEYS
+from .legacy import LEGACY_VIRTUAL_NAMES
 from .models import KEY_CODES, MAX_STEPS, Step
 
-VIRTUAL_NAME = "Moonlight Studio Virtual Input"
+VIRTUAL_NAME = "Automater Virtual Input"
 HOTKEYS = {
     ecodes.KEY_F6: "record",
     ecodes.KEY_F7: "play",
@@ -65,7 +66,7 @@ def devices():
         device = None
         try:
             device = InputDevice(path)
-            if device.name.startswith(("Moonlight Studio", "Moonlight HID")):
+            if device.name.startswith(("Automater", *LEGACY_VIRTUAL_NAMES)):
                 continue
             caps = device.capabilities()
             keys = set(caps.get(ecodes.EV_KEY, []))
@@ -294,7 +295,7 @@ class DeviceMonitor:
         try:
             for path in self.paths:
                 device = InputDevice(path)
-                if device.name.startswith(("Moonlight Studio", "Moonlight HID")):
+                if device.name.startswith(("Automater", *LEGACY_VIRTUAL_NAMES)):
                     device.close()
                     continue
                 opened.append(device)
