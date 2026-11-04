@@ -71,7 +71,7 @@ def test_insert_between_actions_preserves_existing_events(qtbot, tmp_path, monke
     win = window(qtbot, tmp_path, monkeypatch)
     original = list(win.model.steps)
     win.add_step(2, 2)
-    assert win.model.steps == original[:2] + [Step(250, "wait")] + original[2:]
+    assert win.model.steps == original[:2] + [Step(250, "wait", standalone=True)] + original[2:]
     assert win.active_block.start == 2
     clean(win)
 
@@ -81,7 +81,7 @@ def test_duplicate_disable_and_delete_workflow_action(qtbot, tmp_path, monkeypat
     win.workflow_command("duplicate")
     assert len(win.model.steps) == 7
     win.workflow_command("toggle")
-    assert not win.model.steps[0].enabled and not win.model.steps[1].enabled
+    assert not win.model.steps[2].enabled and not win.model.steps[3].enabled
     win.workflow_command("delete")
     assert len(win.model.steps) == 5
     assert all(s.enabled for s in win.model.steps)
@@ -154,7 +154,7 @@ def test_event_selection_is_reflected_on_canvas(qtbot, tmp_path, monkeypatch):
     assert win.active_block.start == 2
     assert win.workflow.canvas.nodes[1].isSelected()
     win.navigate(0, 0)
-    assert win.action_inspector.title.text() == "Wait"
+    assert win.action_inspector.title.text() == "Timer"
     win.undo.clear()
     clean(win)
 

@@ -14,8 +14,9 @@ or ready, and the line below explains what is happening.
 
 ## Build and edit
 
-Click **Add action** to choose Keyboard press, Mouse click, Wait, Move pointer, or
-Scroll. An action is inserted after your selection, or appended if none is selected.
+Click **Add action** to choose Hold, Mouse click, Timer, Move pointer, Scroll,
+Press or Release. Search any supported keyboard key or mouse button, then set the
+timing in the dialog. An action is inserted after your selection, or appended if none is selected.
 The plus button on a connector inserts directly at that location.
 
 Properties are hidden until needed. Click a card to select it; the close button
@@ -38,7 +39,7 @@ positions to save: execution always follows the connected left-to-right order.
 
 ### Grouped paths and precise events
 
-Matching adjacent press/release pairs are represented as one hold/click card. A key
+Matching adjacent press/release pairs are represented as one hold/click card. Explicit Press and Release controls remain separate cards. A key
 pressed while another is held remains an individual press or release card, so the
 workflow does not hide overlapping inputs. Grouping respects enabled boundaries.
 
@@ -74,7 +75,7 @@ Click **Settings**, or select **Run** in the inspector.
 | Background window · X11 | Select a concrete X11/Xwayland window. This experimental mode sends window events without changing focus. |
 | Speed | Scale event delays from 0.1× to 10×. |
 | Repeat | Number of complete cycles; zero displays “Until stopped.” |
-| Start delay | Time to switch to your destination before playback or recording starts. |
+| Start tab → Countdown | Time to switch to your destination before playback or recording starts. |
 | Loop gap | Pause between cycles; the engine uses a minimum 10 ms gap. |
 | Test mode | Highlight the real replay sequence without emitting input. |
 
@@ -112,7 +113,8 @@ only a mouse is selected, global keyboard shortcuts will not work.
 **Save** saves to the current file, or asks for a destination on first
 save. The default is your library. **File → Save as** writes a separate copy. Library
 search filters by filename; double-click a result to open it. Import opens an
-existing JSON script. Existing v0.1 files use the same version-1 data schema.
+existing JSON script. Existing version-1 files remain readable. Advanced controls, timing ranges and
+starting points use version 2 when saved; they require Studio v0.4 or newer.
 
 **Notes** stores starting position, camera direction, bindings and reminders.
 An unsaved-change badge appears in the header. Idle edits are autosaved every five
@@ -148,3 +150,57 @@ mode are remembered across restarts. They are app preferences, separate from the
 portable macro file. Background window handles are intentionally not restored;
 choose a live window each time. Corrupt preferences fall back to defaults with
 a short message; Technical details contains the underlying error.
+
+## Press, hold, release and timers
+
+**Press** sends key-down only. Use a **Timer** while it stays down, then **Release**
+that same key. **Hold** contains a press and timed release together. A mouse button
+can be used with these controls too. Every loop and Stop releases outstanding holds.
+For example: Press W → Timer 500 ms → Release W → Hold Space for 100 ms.
+
+In properties, **Delay before** is a minimum when Random delay is enabled; **Up to**
+is the maximum. Hold/path durations have their own random range. A new value is
+sampled for each ranged event each loop, then divided by playback speed. Random
+choices never change the saved minimum/maximum or shuffle action order.
+
+Select actions and choose **Edit → Randomize selected timing** for percentage
+variation. Zero delays remain zero unless you give them an explicit range. The
+context menu's **Use fixed timing** removes ranges and keeps their minimum values.
+**Split holds into press / release** preserves both events while showing separate cards.
+
+## Selection and clipboard
+
+Ctrl-click toggles a card. Shift-click selects a range. Shift-drag from empty canvas
+box-selects. Ctrl+A selects every action, including other pages. Page navigation
+keeps your selection. Copy/cut/paste and duplicate act in original sequence order;
+paste inserts after the last selected event, or at the end if nothing is selected.
+Clipboard data is bounded, validated JSON and includes all original samples/ranges.
+It does not include the workflow's starting-point configuration.
+
+Ctrl+C copies, Ctrl+X cuts, Ctrl+V pastes, Ctrl+D duplicates, and Delete/Backspace
+removes the selection. Ctrl+Z undoes, Ctrl+Shift+Z redoes, Esc clears selection.
+Text boxes retain normal text-editing shortcuts. The Events view keeps precise raw
+row selection even when the workflow view groups a press/release pair. F1 shows help.
+
+Choose Horizontal, Vertical or Grid below the canvas. Layout is visual only;
+numbered action order controls execution. Alt+arrows moves selected actions as a
+group. Changing layout, zooming or selecting actions never changes macro timing.
+
+## Start countdown and loop reset
+
+Open **Settings → Start**, or click the Start marker. The initial countdown gives
+you time to switch windows; the large countdown banner has a Cancel button and F12
+always stops. Add a Timer action if you also need a delay inside each loop.
+
+Enable the starting point and set X/Y plus settle time. The cursor moves first on
+**every loop**, waits the settle interval, then begins the actions. Pick position
+waits three seconds and reads the cursor without moving it. F12 cancels capture;
+a late result from a cancelled pick is ignored.
+
+Coordinates are saved with the script. Desktop coordinates require X11 or Hyprland;
+other Wayland desktops cannot use exact desktop reset in this version. Background
+coordinates are relative to the selected X11 window's client area and do not move
+or capture the real pointer. The target must still be chosen each session. Switching
+to another workflow restores its saved starting point or turns reset off if it has none.
+
+![Start controls](start-controls.png)

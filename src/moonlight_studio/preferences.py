@@ -19,9 +19,29 @@ class Preferences:
     capture_motion: bool = True
     append_recording: bool = False
     test_mode: bool = False
+    layout: str = "horizontal"
+    start_x: int = 0
+    start_y: int = 0
+    start_settle_ms: float = 150
 
     def validate(self):
-        PlaybackOptions(self.speed, self.repeats, self.countdown, self.loop_gap)
+        from .models import number
+
+        number(self.start_settle_ms, "Cursor settle delay", 0, 10_000)
+        PlaybackOptions(
+            self.speed,
+            self.repeats,
+            self.countdown,
+            self.loop_gap,
+            None,
+            self.start_settle_ms / 1000,
+        )
+        from .pointer import coordinate
+
+        coordinate(self.start_x)
+        coordinate(self.start_y)
+        if self.layout not in ("horizontal", "vertical", "grid"):
+            raise ValueError("Invalid workflow layout")
         if type(self.countdown) is not int:
             raise ValueError("Start delay must be a whole number")
         for field in (

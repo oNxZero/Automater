@@ -300,6 +300,7 @@ class DeviceMonitor:
 
 
 class UInputBackend:
+    coordinate_space = "desktop"
     # Allow the desktop to register the newly created virtual device. The wait is
     # handled by Replay and remains cancellable even with a zero user countdown.
     startup_delay = 0.5
@@ -314,6 +315,16 @@ class UInputBackend:
             ecodes.EV_REL: [ecodes.REL_X, ecodes.REL_Y, ecodes.REL_WHEEL, ecodes.REL_HWHEEL],
         }
         self.device = UInput(caps, name=VIRTUAL_NAME)
+        self.pointer = None
+
+    def prepare_start(self, point):
+        from .pointer import desktop_pointer
+
+        self.pointer = desktop_pointer()
+        self.pointer.validate(point)
+
+    def begin_cycle(self, point):
+        self.pointer.move(point)
 
     def check(self):
         pass
@@ -333,4 +344,8 @@ class UInputBackend:
         self.device.syn()
 
     def close(self):
-        self.device.close()
+        try:
+            if self.pointer:
+                self.pointer.close()
+        finally:
+            self.device.close()

@@ -178,3 +178,30 @@ are bounded and validated; live window handles are not persisted.
 Next priorities remain configurable hotkeys, per-workflow run presets, and named
 actions. Conditional blocks and visual matching need their own execution model and
 compatibility validation; they should not be added as decorative canvas controls.
+
+## v0.4: input controls, selection and loop starting point
+
+Implemented:
+
+- Searchable Linux keys and mouse buttons, including extended function/media/macro
+  keys. Separate Press, Hold, Release, Timer, Click, Move and Scroll actions.
+- Fixed or minimum/maximum timing, sampled each event and each loop, plus undoable
+  percentage variation for selected actions. Coordinate samples remain unchanged.
+- Ctrl/Shift multi-selection, Shift-drag box selection, cross-page selection,
+  copy/cut/paste, duplicate, delete, group reorder, enable/disable and hold splitting.
+  Keep raw Events selections precise and preserve clipboard timing/group metadata.
+- Horizontal, Vertical and Grid layouts with numbered execution order, zoom/fit,
+  bounded rendering, selection toolbar, Edit menu and visible shortcut help.
+- Saved per-workflow starting point, settle delay and coordinate-space validation.
+  Reset before every loop through X11 or Hyprland; X11 background routing resets
+  only its virtual cursor. Fail clearly for unsupported native Wayland warps.
+- Cancellable position picking and large recording/replay countdown; bounded-rate
+  timing feedback, loop/action highlighting and visible transport keybinds.
+- Larger consistent vector icons with distinct Press/Release and solid transport
+  symbols. Compact properties tabs and scrollable Start/Run controls.
+- Backwards-compatible v1 import/export; automatic v2 for advanced metadata.
+- Advanced Test mode example, updated screenshots, guide and regression coverage.
+
+Next useful additions: configurable hotkeys, named action groups, saved run presets,
+screen-based conditions and additional compositor positioning adapters. These need
+real desktop validation before being advertised as supported.

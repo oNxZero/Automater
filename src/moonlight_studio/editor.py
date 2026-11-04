@@ -2,12 +2,27 @@ from dataclasses import replace
 
 from PySide6.QtCore import QAbstractTableModel, Qt, Signal
 from PySide6.QtGui import QColor, QUndoCommand, QUndoStack
-from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QSpinBox, QStyledItemDelegate
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QComboBox,
+    QDoubleSpinBox,
+    QSpinBox,
+    QStyledItemDelegate,
+    QTableView,
+)
 
 from .models import ACTIONS, KEY_CODES, MAX_STEPS
 
-FIELDS = ("enabled", "delay_ms", "action", "code", "x", "y")
-HEADERS = ("On", "Delay · ms", "Action", "Key / button", "X / horizontal", "Y / vertical")
+FIELDS = ("enabled", "delay_ms", "action", "code", "x", "y", "delay_max_ms")
+HEADERS = (
+    "On",
+    "Min delay · ms",
+    "Action",
+    "Key / button",
+    "X / horizontal",
+    "Y / vertical",
+    "Max delay · ms",
+)
 
 
 class Change(QUndoCommand):
@@ -63,6 +78,8 @@ class StepModel(QAbstractTableModel):
         if role == Qt.CheckStateRole and index.column() == 0:
             return Qt.Checked if value else Qt.Unchecked
         if role in (Qt.DisplayRole, Qt.EditRole) and index.column() != 0:
+            if role == Qt.DisplayRole and value is None:
+                return "Fixed"
             return round(value, 3) if isinstance(value, float) else value
         if role == Qt.BackgroundRole and index.row() == self.playing_row:
             return QColor("#364463")
@@ -110,9 +127,11 @@ class StepDelegate(QStyledItemDelegate):
             widget.addItems(ACTIONS if column == 2 else [""] + sorted(KEY_CODES))
             widget.setEditable(column == 3)
             return widget
-        if column == 1:
+        if column in (1, 6):
             widget = QDoubleSpinBox(parent)
-            widget.setRange(0, 3_600_000)
+            widget.setRange(-1 if column == 6 else 0, 3_600_000)
+            if column == 6:
+                widget.setSpecialValueText("Fixed")
             widget.setDecimals(3)
             return widget
         widget = QSpinBox(parent)
@@ -124,8 +143,38 @@ class StepDelegate(QStyledItemDelegate):
         if isinstance(editor, QComboBox):
             editor.setCurrentText(str(value))
         else:
-            editor.setValue(value)
+            editor.setValue(-1 if value is None else value)
 
     def setModelData(self, editor, model, index):
         value = editor.currentText() if isinstance(editor, QComboBox) else editor.value()
+        if index.column() == 6 and value < 0:
+            value = None
         model.setData(index, value)
+
+
+def editing_command(event):
+    if event.modifiers() & Qt.ControlModifier:
+        return {
+            Qt.Key_C: "copy",
+            Qt.Key_X: "cut",
+            Qt.Key_V: "paste",
+            Qt.Key_A: "select_all",
+            Qt.Key_D: "duplicate",
+            Qt.Key_Z: "redo" if event.modifiers() & Qt.ShiftModifier else "undo",
+        }.get(event.key())
+    return {
+        Qt.Key_Delete: "delete",
+        Qt.Key_Backspace: "delete",
+        Qt.Key_Escape: "clear_selection",
+    }.get(event.key())
+
+
+class EventTable(QTableView):
+    command = Signal(str)
+
+    def keyPressEvent(self, event):
+        command = editing_command(event)
+        if command and self.state() != QAbstractItemView.EditingState:
+            self.command.emit(command)
+        else:
+            super().keyPressEvent(event)

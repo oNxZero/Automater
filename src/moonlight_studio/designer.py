@@ -20,13 +20,12 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QSplitter,
     QStackedWidget,
-    QTableView,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from .editor import StepDelegate
+from .editor import EventTable, StepDelegate
 from .inspector import ActionInspector
 from .theme import ACCENT, icon
 from .widgets import button, label
@@ -99,10 +98,30 @@ def build_ui(w):
     w.save_as_btn = menu.addAction("Save as…\tCtrl+Shift+S", w.save_as)
     menu.addSeparator()
     menu.addAction("Load example", w.load_example)
+    menu.addAction("Input controls example", w.load_controls_example)
     file_btn = QPushButton("File")
     file_btn.setObjectName("ghost")
     file_btn.setMenu(menu)
     top.addWidget(file_btn)
+    edit_menu = QMenu(w)
+    for title, command in (
+        ("Undo\tCtrl+Z", "undo"),
+        ("Redo\tCtrl+Shift+Z", "redo"),
+        ("Copy\tCtrl+C", "copy"),
+        ("Cut\tCtrl+X", "cut"),
+        ("Paste\tCtrl+V", "paste"),
+        ("Duplicate\tCtrl+D", "duplicate"),
+        ("Select all\tCtrl+A", "select_all"),
+        ("Delete\tDelete", "delete"),
+        ("Randomize selected timing…", "randomize"),
+        ("Keyboard shortcuts\tF1", "help"),
+    ):
+        action = edit_menu.addAction(title)
+        action.triggered.connect(lambda checked=False, c=command: w.workflow_command(c))
+    edit_btn = QPushButton("Edit")
+    edit_btn.setObjectName("ghost")
+    edit_btn.setMenu(edit_menu)
+    top.addWidget(edit_btn)
     w.save_btn = button("Save", w.save_script, "", "Save workflow · Ctrl+S", "save")
     top.addWidget(w.save_btn)
     body.addLayout(top)
@@ -126,6 +145,22 @@ def build_ui(w):
     w.title_row.addLayout(titles, 1)
     w.settings_btn = button("Settings", lambda: w.show_inspector(1), "ghost", glyph="settings")
     body.addWidget(w.workspace_header)
+    w.countdown_banner = QFrame()
+    w.countdown_banner.setObjectName("hero")
+    countdown = QHBoxLayout(w.countdown_banner)
+    countdown.setContentsMargins(22, 12, 18, 12)
+    w.countdown_number = label("3", "title")
+    w.countdown_number.setMinimumWidth(50)
+    countdown.addWidget(w.countdown_number)
+    w.countdown_message = label("Switch to your target window", "body")
+    countdown.addWidget(w.countdown_message, 1)
+    w.countdown_progress = QProgressBar()
+    w.countdown_progress.setRange(0, 1000)
+    w.countdown_progress.setTextVisible(False)
+    countdown.addWidget(w.countdown_progress, 1)
+    countdown.addWidget(button("Cancel · F12", w.stop, "ghost", glyph="stop"))
+    w.countdown_banner.hide()
+    body.addWidget(w.countdown_banner)
     w.pages = QStackedWidget()
     body.addWidget(w.pages, 1)
 
@@ -155,10 +190,11 @@ def build_ui(w):
     edit_layout.setSpacing(0)
     w.editor_stack = QStackedWidget()
     w.workflow = Workflow()
-    w.workflow.canvas.selected.connect(w.select_block)
+    w.workflow.canvas.selected.connect(w.select_blocks)
     w.workflow.canvas.insertRequested.connect(w.choose_action)
     w.workflow.canvas.reorderRequested.connect(w.reorder_blocks)
     w.workflow.canvas.command.connect(w.workflow_command)
+    w.workflow.layout_choice.currentIndexChanged.connect(w.save_preferences)
     w.editor_stack.addWidget(w.workflow)
     events = QWidget()
     events_layout = QVBoxLayout(events)
@@ -167,7 +203,8 @@ def build_ui(w):
     events_layout.addWidget(
         label("Every original input, with its exact delay. Double-click a cell to edit.")
     )
-    w.table = QTableView()
+    w.table = EventTable()
+    w.table.command.connect(w.workflow_command)
     w.table.setAccessibleName("Script event editor")
     w.table.setModel(w.model)
     w.table.setItemDelegate(StepDelegate(w.table))
@@ -177,7 +214,7 @@ def build_ui(w):
     w.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
     w.table.verticalHeader().setDefaultSectionSize(40)
     w.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-    for col, width in enumerate((42, 105, 110, 145, 105, 105)):
+    for col, width in enumerate((42, 105, 110, 165, 90, 90, 115)):
         w.table.setColumnWidth(col, width)
     w.table.horizontalHeader().setStretchLastSection(True)
     w.table.selectionModel().selectionChanged.connect(w.table_selection_changed)
@@ -222,10 +259,12 @@ def build_ui(w):
     ins_layout.setContentsMargins(18, 16, 18, 16)
     ins_layout.setSpacing(18)
     tabs = QHBoxLayout()
+    tabs.setSpacing(3)
     w.inspector_group = QButtonGroup(w)
     w.inspector_buttons = []
-    for i, name in enumerate(("Action", "Run", "Notes")):
+    for i, name in enumerate(("Action", "Run", "Start", "Notes")):
         tab = segment(name, lambda checked=False, p=i: w.show_inspector(p), w.inspector_group)
+        tab.setStyleSheet("padding: 6px 5px; font-size: 12px;")
         tabs.addWidget(tab)
         w.inspector_buttons.append(tab)
     tabs.addWidget(button("", w.hide_inspector, "ghost", "Close properties", "close"))
@@ -236,6 +275,7 @@ def build_ui(w):
     w.action_inspector.command.connect(w.workflow_command)
     w.inspector_stack.addWidget(w.action_inspector)
     w.inspector_stack.addWidget(build_run_settings(w))
+    w.inspector_stack.addWidget(build_start_settings(w))
     notes_page = QWidget()
     notes = QVBoxLayout(notes_page)
     notes.setContentsMargins(0, 0, 0, 0)
@@ -263,10 +303,12 @@ def build_ui(w):
     controls.setContentsMargins(14, 10, 14, 10)
     controls.setSpacing(6)
     row = QHBoxLayout()
-    w.record_btn = button("Record", w.toggle_record, "record", "Record / finish · F6", "record")
-    w.play_btn = button("Run", w.toggle_play, "primary", "Run / stop · F7", "play")
-    w.pause_btn = button("Pause", w.pause, "ghost", "Pause / resume · F8", "pause")
-    w.stop_btn = button("Stop", w.stop, "stop", "Emergency stop · F12", "stop")
+    w.record_btn = button(
+        "Record · F6", w.toggle_record, "record", "Record / finish · F6", "record"
+    )
+    w.play_btn = button("Run · F7", w.toggle_play, "primary", "Run / stop · F7", "play")
+    w.pause_btn = button("Pause · F8", w.pause, "ghost", "Pause / resume · F8", "pause")
+    w.stop_btn = button("Stop · F12", w.stop, "stop", "Emergency stop · F12", "stop")
     for widget in (w.record_btn, w.play_btn, w.pause_btn, w.stop_btn):
         row.addWidget(widget)
     w.run_state = label("", "muted")
@@ -308,6 +350,7 @@ def build_run_settings(w):
     w.target.setAccessibleName("Target program window")
     w.target.setMinimumContentsLength(12)
     w.target.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+    w.target.currentIndexChanged.connect(w.update_run_summary)
     layout.addWidget(w.target)
     w.refresh_target_btn = button("Refresh windows", w.refresh_windows, "ghost", glyph="refresh")
     layout.addWidget(w.refresh_target_btn)
@@ -326,10 +369,6 @@ def build_run_settings(w):
     w.repeats.setRange(0, 100_000)
     w.repeats.setValue(1)
     w.repeats.setSpecialValueText("Until stopped")
-    w.countdown = QSpinBox()
-    w.countdown.setRange(0, 30)
-    w.countdown.setValue(3)
-    w.countdown.setSuffix(" s")
     w.gap = QDoubleSpinBox()
     w.gap.setRange(0, 3600)
     w.gap.setValue(0.25)
@@ -337,7 +376,6 @@ def build_run_settings(w):
     for text, widget in (
         ("Speed", w.speed),
         ("Repeat", w.repeats),
-        ("Start delay", w.countdown),
         ("Loop gap", w.gap),
     ):
         widget.setMinimumWidth(80)
@@ -346,6 +384,54 @@ def build_run_settings(w):
     layout.addLayout(form)
     w.run_estimate = label("")
     layout.addWidget(w.run_estimate)
+    layout.addStretch()
+    return scrollable(page)
+
+
+def build_start_settings(w):
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(12)
+    layout.addWidget(label("Starting countdown", "heading"))
+    layout.addWidget(
+        label("Time to switch windows before recording or replay starts. F12 cancels.")
+    )
+    w.countdown = QSpinBox()
+    w.countdown.setRange(0, 30)
+    w.countdown.setValue(3)
+    w.countdown.setSuffix(" s")
+    w.countdown.valueChanged.connect(w.update_run_summary)
+    layout.addWidget(w.countdown)
+    layout.addSpacing(10)
+    layout.addWidget(label("Loop starting point", "heading"))
+    w.start_enabled = QCheckBox("Reset cursor each loop")
+    w.start_enabled.toggled.connect(w.update_run_summary)
+    layout.addWidget(w.start_enabled)
+    w.start_capability = label("")
+    layout.addWidget(w.start_capability)
+    form = QFormLayout()
+    form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+    w.start_x, w.start_y = QSpinBox(), QSpinBox()
+    for axis in (w.start_x, w.start_y):
+        axis.setRange(-32768, 32767)
+        axis.valueChanged.connect(w.update_run_summary)
+    form.addRow("X", w.start_x)
+    form.addRow("Y", w.start_y)
+    w.start_settle = QDoubleSpinBox()
+    w.start_settle.setRange(0, 10000)
+    w.start_settle.setValue(150)
+    w.start_settle.setSuffix(" ms")
+    w.start_settle.valueChanged.connect(w.update_run_summary)
+    form.addRow("Settle delay", w.start_settle)
+    layout.addLayout(form)
+    w.pick_position_btn = button("Pick position · 3 s", w.pick_position, glyph="target")
+    layout.addWidget(w.pick_position_btn)
+    layout.addWidget(
+        label(
+            "The cursor moves first, settles, then the action sequence begins. Background mode uses window-relative coordinates and does not move your real cursor."
+        )
+    )
     layout.addStretch()
     return scrollable(page)
 

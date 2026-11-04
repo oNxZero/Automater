@@ -44,7 +44,7 @@ def test_invalid_step_rejected(changes):
     [
         [],
         {},
-        {"version": 2, "steps": []},
+        {"version": 99, "steps": []},
         {"version": True, "steps": []},
         {"version": 1, "steps": "code"},
         {"version": 1, "steps": [{}], "name": ""},

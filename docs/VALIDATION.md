@@ -1,11 +1,11 @@
-# Verification of v0.3
+# Verification of v0.4
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
 Python 3.14.8, Qt/PySide6 6.12.0, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **101 automated tests passed**, including offscreen Qt workflows and four live X11
+- **136 automated tests passed**, including offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Replay tests cover long-delay cancellation, held-key release, partial-send failure,
@@ -62,6 +62,19 @@ Python 3.14.8, Qt/PySide6 6.12.0, evdev 1.9.3, and python-xlib 0.33.
 
 ## Requires a real desktop before calling this game-tested
 
+The v0.4 additions also verify Press/Release grouping, extended keys, random ranges,
+v1/v2 persistence, clipboard validation, native editing shortcuts, precise Events
+selections, cross-page select/delete/undo, box selection, group moves and all three
+layouts. Loop-start tests check reset order every loop, coordinate-space mismatch,
+failed preflight cleanup, cancellation, repeated timing sampling and speed scaling.
+X11/Hyprland desktop providers are mocked: bounds, scale, transform, negative monitor
+positions and position verification are covered without moving the user's cursor.
+The live X11 test checks background positioning on an unmapped controlled receiver.
+Test mode and cancelled/late position-picking callbacks are checked separately.
+
+New actual Qt screenshots show [the controls](editor.png), [Start settings](start-controls.png)
+and [countdown](countdown.png). The Test mode GIF uses frames from the running app.
+
 This sandbox exposes an X server but no `/dev/input` or `/dev/uinput`. The following
 manual checks remain unverified:
 
@@ -79,6 +92,9 @@ manual checks remain unverified:
    mode; an X11 receiver test cannot establish game compatibility.
 5. Test high polling-rate mice and extended recordings near the 200,000-step limit;
    validate memory usage and timing on the user's actual machine.
+6. On X11 and Hyprland, pick a desktop point and run at least two loops. Check
+   monitor scaling, pointer capture, settle delay and interruption. Verify exact
+   background coordinates separately in the intended X11 application.
 
 Native Wayland background routing, gamepad/absolute input, Windows/macOS, process
-watchdogs, and packaged installers are roadmap work, not verified v0.3 features.
+watchdogs, and packaged installers are roadmap work, not verified v0.4 features.

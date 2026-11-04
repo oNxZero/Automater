@@ -1,0 +1,88 @@
+{
+  "name": "Input controls",
+  "notes": "Press E, wait, release E, hold W, click and move. Test mode sends no input.",
+  "steps": [
+    {
+      "delay_ms": 0,
+      "action": "key_down",
+      "code": "KEY_E",
+      "x": 0,
+      "y": 0,
+      "enabled": true,
+      "delay_max_ms": null,
+      "standalone": true
+    },
+    {
+      "delay_ms": 200,
+      "action": "wait",
+      "code": "",
+      "x": 0,
+      "y": 0,
+      "enabled": true,
+      "delay_max_ms": 400,
+      "standalone": true
+    },
+    {
+      "delay_ms": 0,
+      "action": "key_up",
+      "code": "KEY_E",
+      "x": 0,
+      "y": 0,
+      "enabled": true,
+      "delay_max_ms": null,
+      "standalone": true
+    },
+    {
+      "delay_ms": 0,
+      "action": "key_down",
+      "code": "KEY_W",
+      "x": 0,
+      "y": 0,
+      "enabled": true,
+      "delay_max_ms": null,
+      "standalone": false
+    },
+    {
+      "delay_ms": 500,
+      "action": "key_up",
+      "code": "KEY_W",
+      "x": 0,
+      "y": 0,
+      "enabled": true,
+      "delay_max_ms": 750,
+      "standalone": false
+    },
+    {
+      "delay_ms": 0,
+      "action": "key_down",
+      "code": "BTN_LEFT",
+      "x": 0,
+      "y": 0,
+      "enabled": true,
+      "delay_max_ms": null,
+      "standalone": false
+    },
+    {
+      "delay_ms": 60,
+      "action": "key_up",
+      "code": "BTN_LEFT",
+      "x": 0,
+      "y": 0,
+      "enabled": true,
+      "delay_max_ms": null,
+      "standalone": false
+    },
+    {
+      "delay_ms": 0,
+      "action": "move",
+      "code": "",
+      "x": 10,
+      "y": 0,
+      "enabled": true,
+      "delay_max_ms": null,
+      "standalone": true
+    }
+  ],
+  "version": 2,
+  "start": null
+}

@@ -10,7 +10,7 @@ Record your keyboard and mouse. Shape the sequence visually. Run it your way.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Studio-v0.3-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Studio-v0.4-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 
 A native Python desktop app inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
@@ -34,6 +34,31 @@ Your original input samples and timings stay available in the **Events** view.
 | Connected keyboard, mouse, wait and path cards | Speed, repeats, start delay and loop gap | JSON import and export |
 | Click a card to edit its properties | Pause, resume and F12 emergency stop | Atomic saves and autosave recovery |
 | Insert between cards; duplicate or reorder | Watch the active action during replay | Undo / redo up to 50 event edits |
+
+## New in v0.4: a complete input editor
+
+- **Press, Hold, Release and Timer:** search the Linux keyboard/button list, choose a
+  key, set its delay and duration, then add the action. Holds release automatically;
+  Press stays down until Release, loop end or Stop.
+- **Random timing:** set minimum/maximum delays or hold durations. Each event samples
+  a fresh value on every loop. Select several actions → Edit → Randomize selected
+  timing to apply percentage variation in one undoable change.
+- **Real editing controls:** Ctrl/Shift multi-selection, Shift-drag box selection,
+  copy/cut/paste, duplicate, delete, selection-wide enable/disable and undo/redo.
+  Copy/paste retains keys, timers, ranges and grouping metadata.
+- **Three layouts:** Horizontal, Vertical and Grid. Playback order stays numbered;
+  changing layout never changes event data. Selection is retained across pages.
+- **Loop starting point:** reset to an X/Y position before **every** loop, allow a
+  settle delay, then begin the action sequence. Starting points are stored with
+  the workflow. Desktop resets support X11 and Hyprland; background mode uses
+  target-window coordinates without moving the real cursor.
+- **A visible starting countdown:** Record, Run and coordinate picking show a
+  cancellable countdown. F12 stops/cancels. The active action, sampled timing and
+  loop are shown during replay. Transport buttons show their F-key shortcuts.
+- **Clearer icons and shortcut help:** distinct press/release symbols, larger
+  transport icons, an Edit menu, and **Keys · F1** on the canvas.
+
+Open **File → Input controls example** to try the new actions in Test mode.
 
 ## New in v0.3
 
@@ -135,16 +160,20 @@ physical input access separately.
 | **Devices** | Check input access, select physical devices, choose capture categories and find permissions help. |
 | **Action inspector** | Edit the selected action, apply changes, duplicate, delete or move it. |
 | **Run inspector** | Choose destination, speed, repeats, countdown, loop gap and Test mode. See estimated duration. |
+| **Start inspector** | Configure the initial countdown and the per-loop cursor reset. |
 | **Notes inspector** | Remember game bindings, starting position and camera direction. |
 
-**Canvas controls:** Scroll horizontally with the mouse wheel; drag the background
+**Canvas controls:** Ctrl-click adds/removes actions from selection; Shift-click
+selects a range, and Shift-drag on empty canvas box-selects. Scroll horizontally with the mouse wheel; drag the background
 to pan; hold **Ctrl** and scroll to zoom. Use **Fit** to reframe the workflow.
-The plus buttons between cards insert an action at that exact point. Right-click a
-card for duplicate, enable/disable, move and delete. Arrow keys select the previous
-or next action; **Alt + ←/→** reorders it. **Delete** removes the selected card.
+The plus buttons between cards insert an action at that exact point. The Add action
+dialog supports independent Press and Release as well as timed holds. Right-click a
+card for duplicate, enable/disable, move and delete. Arrow keys select actions; Shift + arrows extend selection. **Alt + arrows** moves
+the selection. **Delete** removes selected actions. Ctrl+A selects all pages.
+The layout selector switches Horizontal / Vertical / Grid. Press F1 for all shortcuts.
 
 **Recording detail stays intact.** Adjacent matching press/release events become
-one hold/click card. Consecutive movement or scroll samples share a card, while
+one hold/click card. Consecutive recorded movement or scroll samples share a card, while
 Events retains every sample. Overlapping key holds stay separate. Large workflows
 use pages of at most 60 cards, keeping the canvas responsive. This is a linear
 sequence; repeat the whole workflow in Settings → Run. Branches and nested loops
@@ -164,6 +193,12 @@ recovery and common questions.
 | Ctrl+N / Ctrl+O / Ctrl+S | New / import / save |
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo event edits |
+| Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste selected actions |
+| Ctrl+D / Ctrl+A | Duplicate / select all, including other pages |
+| Esc | Clear selection |
+| Shift + arrows / Shift-drag | Extend selection / box-select |
+| Ctrl+wheel / Ctrl+0 | Zoom / fit |
+| F1 | Workflow shortcut help |
 | ← / → on the canvas | Select previous / next action |
 | Alt + ← / → on the canvas | Move the selected action |
 | Delete on the canvas | Delete the selected action |
@@ -216,6 +251,28 @@ After unplugging or reconnecting a device, stop active work and refresh devices.
 Disconnects and dropped event buffers stop active work with an error rather than
 continuing a potentially incomplete recording.
 
+## Loop starting coordinates
+
+Click **Settings → Start**, or click the Start marker on the canvas. Set the starting
+countdown, enable **Move to this point before every loop**, enter X/Y, and choose a
+settle delay. **Pick cursor position · 3 s** captures your current desktop position
+after a three-second countdown, letting you place the pointer first.
+
+- **X11 desktop:** coordinates are desktop screen pixels. The move is verified.
+- **Hyprland desktop:** coordinates use Hyprland's global logical layout, including
+  monitor scale and negative monitor positions. `hyprctl` is required.
+- **Background X11 window:** coordinates are client pixels relative to the selected
+  window, starting at its top-left. This resets the virtual cursor, not your real one.
+- **Other Wayland desktops:** exact desktop reset is unavailable in this release.
+  Relative replay remains available. Studio never silently substitutes an Xwayland
+  warp or approximate absolute-device mapping for a native desktop reset.
+
+Reset runs after the initial countdown and before each loop's first action. Held
+inputs are released between loops; then the next reset occurs. If a real move is
+rejected or the point is outside the target, playback stops before sending keys.
+Test mode simulates the reset without moving anything. A cursor point does not reset
+your character, camera or game state. See [platform implementation notes](docs/POINTER.md).
+
 ## Background compatibility
 
 | Target | Desktop replay | Background replay |
@@ -247,7 +304,8 @@ they are not screen-coordinate recordings. Scripts have a 200,000-step limit.
 
 Device selections and run/capture preferences are saved privately in `preferences.json`.
 Window handles are never restored across restarts. These preferences are per application;
-portable macro JSON files retain their version-1 format.
+existing version-1 macro files remain readable. Scripts using advanced controls or
+starting coordinates are saved in version 2; older Studio releases cannot read those files.
 
 Configuration lives in `$XDG_CONFIG_HOME/moonlight-studio` (normally
 `~/.config/moonlight-studio`). Saved library scripts are under `scripts/`;

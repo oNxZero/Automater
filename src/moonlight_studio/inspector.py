@@ -13,9 +13,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .models import KEY_CODES
+from .key_picker import KeyPicker
 from .widgets import button, label
-from .workflow import friendly_key
 
 
 def milliseconds():
@@ -54,9 +53,7 @@ class ActionInspector(QWidget):
         form.setSpacing(12)
         form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
-        self.key = QComboBox()
-        for code in sorted(KEY_CODES, key=lambda c: (c.startswith("BTN_"), friendly_key(c))):
-            self.key.addItem(friendly_key(code), code)
+        self.key = KeyPicker()
         self.key.setMaxVisibleItems(16)
         self.key.setMinimumContentsLength(8)
         self.key.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
@@ -68,10 +65,22 @@ class ActionInspector(QWidget):
         self.delay.setAccessibleName("Delay before action in milliseconds")
         self.delay_label = label("Delay before")
         form.addRow(self.delay_label, self.delay)
+        self.delay_random = QCheckBox("Random delay")
+        form.addRow(self.delay_random)
+        self.delay_max = milliseconds()
+        self.delay_max.setToolTip("Maximum delay; the delay above is the minimum")
+        form.addRow("Up to", self.delay_max)
+        self.delay_random.toggled.connect(self.delay_max.setEnabled)
         self.duration = milliseconds()
         self.duration.setAccessibleName("Action duration in milliseconds")
         self.duration_label = label("Hold for")
         form.addRow(self.duration_label, self.duration)
+        self.duration_random = QCheckBox("Random duration")
+        form.addRow(self.duration_random)
+        self.duration_max = milliseconds()
+        self.duration_max_label = label("Up to")
+        form.addRow(self.duration_max_label, self.duration_max)
+        self.duration_random.toggled.connect(self.duration_max.setEnabled)
         self.x, self.y = QSpinBox(), QSpinBox()
         for axis in (self.x, self.y):
             axis.setRange(-32767, 32767)
@@ -134,6 +143,9 @@ class ActionInspector(QWidget):
         self.key_label.setVisible(key_visible)
         self.key.setCurrentIndex(max(0, self.key.findData(first.code)))
         self.delay.setValue(first.delay_ms)
+        self.delay_random.setChecked(first.delay_max_ms is not None)
+        self.delay_max.setValue(first.maximum_ms)
+        self.delay_max.setEnabled(self.delay_random.isChecked())
         self.delay_label.setText("Wait for" if block.kind == "wait" else "Delay before")
         self.duration_label.setText("Hold for" if pair else "Path duration")
         self.duration.setVisible(len(subset) > 1)
@@ -141,6 +153,13 @@ class ActionInspector(QWidget):
         # Never silently clamp aggregate path durations to the per-event limit.
         self.duration.setMaximum(3_600_000 * max(1, len(subset) - 1))
         self.duration.setValue(sum(s.delay_ms for s in subset[1:]))
+        self.duration_random.setVisible(len(subset) > 1)
+        self.duration_max.setVisible(len(subset) > 1)
+        self.duration_max_label.setVisible(len(subset) > 1)
+        self.duration_max.setMaximum(3_600_000 * max(1, len(subset) - 1))
+        self.duration_max.setValue(sum(s.maximum_ms for s in subset[1:]))
+        self.duration_random.setChecked(any(s.delay_max_ms is not None for s in subset[1:]))
+        self.duration_max.setEnabled(self.duration_random.isChecked())
         for widget in (self.x, self.y, self.x_label, self.y_label):
             widget.setVisible(block.kind in ("move", "scroll") and len(subset) == 1)
         self.x.setValue(first.x)
@@ -153,14 +172,33 @@ class ActionInspector(QWidget):
 
     def apply(self):
         if self.block:
+            try:
+                code = self.key.code() if self.block.kind in ("key", "mouse") else ""
+            except ValueError as exc:
+                self.detail.setText(str(exc))
+                return
             self.applied.emit(
                 self.block,
                 {
                     "enabled": self.enabled.isChecked(),
-                    "code": self.key.currentData(),
+                    "code": code,
                     "delay": self.delay.value(),
                     "duration": self.duration.value(),
+                    "delay_max": self.delay_max.value() if self.delay_random.isChecked() else None,
+                    "duration_max": self.duration_max.value()
+                    if self.duration_random.isChecked()
+                    else None,
                     "x": self.x.value(),
                     "y": self.y.value(),
                 },
             )
+
+    def select_many(self, blocks, steps):
+        self.block = None
+        self.fields.hide()
+        self.apply_btn.setEnabled(False)
+        self.caption.setText("SELECTION")
+        self.title.setText(f"{len(blocks):,} actions selected")
+        self.summary.setText(
+            "Copy, cut, duplicate, randomize timing or delete the selection with the toolbar or keyboard shortcuts."
+        )

@@ -74,6 +74,8 @@ def windows():
 
 
 class BackgroundBackend:
+    coordinate_space = "window"
+
     def __init__(self, target):
         self.connection = display.Display()
         self.target = target
@@ -114,6 +116,19 @@ class BackgroundBackend:
                     raise ValueError(f"{step.code} cannot be mapped to an X11 keycode")
             if step.action == "scroll" and max(abs(step.x), abs(step.y)) > 100:
                 raise ValueError("Background scroll is limited to 100 notches per step")
+
+    def prepare_start(self, point):
+        self.check()
+        geometry = self.window.get_geometry()
+        self.width, self.height = geometry.width, geometry.height
+        if not 0 <= point[0] < self.width or not 0 <= point[1] < self.height:
+            raise ValueError("Starting point must be inside the target window's client area")
+
+    def begin_cycle(self, point):
+        self.prepare_start(point)
+        self.x, self.y = point
+        self._event(protocol.event.MotionNotify, X.NotifyNormal, X.PointerMotionMask)
+        self.connection.sync()
 
     def _event(self, cls, detail, mask):
         root = self.connection.screen().root

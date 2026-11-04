@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
+    QComboBox,
     QGraphicsItem,
     QGraphicsObject,
     QGraphicsScene,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .editor import editing_command
 from .theme import COLORS, MUTED, TEXT, font, icon
 
 PAGE_SIZE = 60
@@ -45,6 +47,14 @@ def duration_text(ms):
     return f"{ms / 1000:.2f} s" if ms >= 1000 else f"{ms:g} ms"
 
 
+def timing_range(low, high):
+    if low == high:
+        return duration_text(low)
+    if high < 1000:
+        return f"{low:.3g}–{high:.3g} ms"
+    return f"{low / 1000:.3g}–{high / 1000:.3g} s"
+
+
 @dataclass(frozen=True)
 class Block:
     start: int
@@ -54,6 +64,7 @@ class Block:
     detail: str
     duration: float
     enabled: bool
+    duration_max: float = 0
 
 
 def blocks_for(steps):
@@ -62,8 +73,10 @@ def blocks_for(steps):
         step, end = steps[i], i + 1
         duration = step.delay_ms
         if (
-            step.action == "key_down"
+            not step.standalone
+            and step.action == "key_down"
             and end < len(steps)
+            and not steps[end].standalone
             and steps[end].action == "key_up"
             and steps[end].code == step.code
             and steps[end].enabled == step.enabled
@@ -73,11 +86,13 @@ def blocks_for(steps):
             mouse = step.code.startswith("BTN_")
             kind = "mouse" if mouse else "key"
             title = friendly_key(step.code) if mouse else f"Hold {friendly_key(step.code)}"
-            detail = f"{'Hold' if mouse else 'Pressed for'} {duration_text(steps[i + 1].delay_ms)}"
+            detail = f"{'Hold' if mouse else 'Pressed for'} {timing_range(steps[i + 1].delay_ms, steps[i + 1].maximum_ms)}"
         elif step.action in ("move", "scroll"):
             kind, dx, dy = step.action, step.x, step.y
             while (
                 end < len(steps)
+                and not step.standalone
+                and not steps[end].standalone
                 and steps[end].action == kind
                 and steps[end].enabled == step.enabled
             ):
@@ -87,15 +102,26 @@ def blocks_for(steps):
             title = "Move pointer" if kind == "move" else "Scroll"
             detail = f"X {dx:+,}   Y {dy:+,}"
         elif step.action == "wait":
-            kind, title = "wait", "Wait"
-            detail = f"Pause for {duration_text(duration)}"
+            kind, title = "wait", "Timer"
+            detail = f"Wait {timing_range(duration, step.maximum_ms)}"
         else:
             kind = "mouse" if step.code.startswith("BTN_") else "key"
             title = (
                 f"{'Press' if step.action == 'key_down' else 'Release'} {friendly_key(step.code)}"
             )
             detail = "Mouse button" if kind == "mouse" else "Keyboard input"
-        result.append(Block(i, end, kind, title, detail, duration, step.enabled))
+        result.append(
+            Block(
+                i,
+                end,
+                kind,
+                title,
+                detail,
+                duration,
+                step.enabled,
+                sum(s.maximum_ms for s in steps[i:end]),
+            )
+        )
         i = end
     return result
 
@@ -142,6 +168,10 @@ class Node(QGraphicsObject):
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(QRectF(16, 16, 33, 33), 9, 9)
         name = "mouse" if self.block.kind == "mouse" else self.block.kind
+        if self.block.title.startswith("Press "):
+            name = "press"
+        elif self.block.title.startswith("Release "):
+            name = "release"
         painter.drawPixmap(22, 22, icon(name, color.name()).pixmap(21, 21))
         painter.setFont(font(8, True))
         painter.setPen(QColor(MUTED))
@@ -162,15 +192,15 @@ class Node(QGraphicsObject):
         painter.setPen(color)
         count = self.block.end - self.block.start
         painter.drawText(
-            QRectF(16, 119, 120, 18),
+            QRectF(16, 119, 70, 18),
             Qt.AlignVCenter,
             "Playing…" if self.playing else f"{count} event{'s' if count != 1 else ''}",
         )
         painter.setPen(QColor("#929bb6"))
         painter.drawText(
-            QRectF(120, 119, 68, 18),
+            QRectF(78, 119, 110, 18),
             Qt.AlignVCenter | Qt.AlignRight,
-            duration_text(self.block.duration),
+            timing_range(self.block.duration, self.block.duration_max),
         )
 
     def hoverEnterEvent(self, event):
@@ -183,36 +213,70 @@ class Node(QGraphicsObject):
 
     def mousePressEvent(self, event):
         self.origin = event.scenePos()
-        already_selected = self.isSelected()
-        super().mousePressEvent(event)
-        if already_selected:
-            self.canvas.selected.emit(self.block)
+        ids = set(self.canvas.selected_indices)
+        mods = event.modifiers()
+        self.collapse_on_click = self.index in ids and len(ids) > 1 and not mods
+        if mods & Qt.ShiftModifier:
+            anchor = self.canvas.anchor if self.canvas.anchor is not None else self.index
+            selected = set(range(min(anchor, self.index), max(anchor, self.index) + 1))
+            self.canvas.choose_indices(ids | selected if mods & Qt.ControlModifier else selected)
+        elif mods & Qt.ControlModifier:
+            self.canvas.choose_indices(ids ^ {self.index})
+            self.canvas.anchor = self.index
+        elif not self.collapse_on_click:
+            self.canvas.choose_indices({self.index})
+            self.canvas.anchor = self.index
+        self.drag_origins = {
+            i: node.pos()
+            for i, node in self.canvas.nodes.items()
+            if i in self.canvas.selected_indices
+        }
+        self.setFocus(Qt.MouseFocusReason)
+        event.accept()
 
     def mouseMoveEvent(self, event):
-        delta = event.scenePos().x() - self.origin.x()
-        if abs(delta) > 12:
-            self.setPos(self.canvas.node_x(self.index) + delta, 136)
-            self.setZValue(2)
+        delta = event.scenePos() - self.origin
+        if abs(delta.x()) + abs(delta.y()) > 10:
+            for index, origin in self.drag_origins.items():
+                self.canvas.nodes[index].setPos(origin + delta)
+                self.canvas.nodes[index].setZValue(2)
+        event.accept()
 
     def mouseReleaseEvent(self, event):
-        delta = event.scenePos().x() - self.origin.x()
-        super().mouseReleaseEvent(event)
-        self.setPos(self.canvas.node_x(self.index), 136)
-        self.setZValue(0)
-        if abs(delta) > PITCH / 2:
-            target = max(0, min(len(self.canvas.blocks) - 1, self.index + round(delta / PITCH)))
+        delta = event.scenePos() - self.origin
+        for index, origin in self.drag_origins.items():
+            if index in self.canvas.nodes:
+                self.canvas.nodes[index].setPos(origin)
+                self.canvas.nodes[index].setZValue(0)
+        event.accept()
+        if abs(delta.x()) + abs(delta.y()) > 60 and self.canvas.nodes:
+            destination = self.canvas.node_position(self.index) + delta
+            target = min(
+                self.canvas.nodes,
+                key=lambda i: (self.canvas.node_position(i) - destination).manhattanLength(),
+            )
             if target != self.index:
                 self.canvas.reorderRequested.emit(self.index, target)
+        elif self.collapse_on_click:
+            self.canvas.choose_indices({self.index})
 
     def contextMenuEvent(self, event):
-        self.setSelected(True)
+        if self.index not in self.canvas.selected_indices:
+            self.canvas.choose_indices({self.index})
         menu = QMenu()
         for text, action in (
-            ("Duplicate action", "duplicate"),
+            ("Copy\tCtrl+C", "copy"),
+            ("Cut\tCtrl+X", "cut"),
+            ("Paste after selection\tCtrl+V", "paste"),
+            ("Duplicate\tCtrl+D", "duplicate"),
+            ("Select all\tCtrl+A", "select_all"),
+            ("Randomize timing…", "randomize"),
+            ("Use fixed timing", "fixed_timing"),
             ("Enable / disable", "toggle"),
-            ("Move left", "left"),
-            ("Move right", "right"),
-            ("Delete action", "delete"),
+            ("Split holds into press / release", "split"),
+            ("Move earlier\tAlt+←", "left"),
+            ("Move later\tAlt+→", "right"),
+            ("Delete\tDelete", "delete"),
         ):
             item = menu.addAction(text)
             item.triggered.connect(
@@ -245,6 +309,31 @@ class InsertPoint(QGraphicsObject):
         event.accept()
 
 
+class StartPoint(QGraphicsObject):
+    def __init__(self, canvas):
+        super().__init__()
+        self.canvas = canvas
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("Starting countdown and loop cursor position · click to configure")
+
+    def boundingRect(self):
+        return QRectF(-55, -24, 110, 75)
+
+    def paint(self, painter, option, widget=None):
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QColor("#28273d"))
+        painter.setPen(QPen(QColor("#8e7abb"), 1.5))
+        painter.drawEllipse(QPointF(0, 0), 20, 20)
+        painter.drawPixmap(-10, -10, icon("target", "#c5b7ed").pixmap(20, 20))
+        painter.setPen(QColor(MUTED))
+        painter.setFont(font(8, True))
+        painter.drawText(QRectF(-55, 26, 110, 20), Qt.AlignCenter, self.canvas.start_label)
+
+    def mousePressEvent(self, event):
+        self.canvas.command.emit("start_settings")
+        event.accept()
+
+
 class Canvas(QGraphicsView):
     selected = Signal(object)
     insertRequested = Signal(int)
@@ -261,10 +350,14 @@ class Canvas(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.setAccessibleName(
-            "Left to right workflow canvas. Select actions to edit. Control plus wheel zooms."
+            "Workflow. Ctrl-click adds selection. Shift-drag box selects. Ctrl+C copies; Ctrl+V pastes."
         )
         self.blocks, self.starts, self.nodes = [], [], {}
+        self.selected_indices = set()
+        self.anchor = None
         self.page = 0
+        self.layout_mode = "horizontal"
+        self.start_label = "START"
         self.scene().selectionChanged.connect(self.selection_changed)
 
     def drawBackground(self, painter, rect):
@@ -279,18 +372,27 @@ class Canvas(QGraphicsView):
             for y in range(top, math.ceil(rect.bottom()), spacing):
                 painter.drawPoint(QPointF(x, y))
 
+    def node_position(self, index):
+        i = index - self.page * PAGE_SIZE
+        if self.layout_mode == "vertical":
+            return QPointF(136, 110 + i * 214)
+        if self.layout_mode == "grid":
+            return QPointF(136 + (i % 4) * PITCH, 136 + (i // 4) * 224)
+        return QPointF(136 + i * PITCH, 136)
+
     def node_x(self, index):
-        return 136 + (index - self.page * PAGE_SIZE) * PITCH
+        return self.node_position(index).x()
 
     def rebuild(self, blocks, selected_row=-1):
         self.blocks = blocks
         self.starts = [b.start for b in blocks]
         self.page = min(self.page, max(0, (len(blocks) - 1) // PAGE_SIZE))
-        if selected_row >= 0:
-            self.page = max(0, bisect_right(self.starts, selected_row) - 1) // PAGE_SIZE
+        self.selected_indices = set()
+        if selected_row >= 0 and blocks:
+            index = max(0, bisect_right(self.starts, selected_row) - 1)
+            self.selected_indices = {index}
+            self.page = index // PAGE_SIZE
         self.render_page()
-        if selected_row >= 0:
-            self.select_row(selected_row, reveal=False)
 
     def render_page(self):
         self.scene().blockSignals(True)
@@ -301,107 +403,191 @@ class Canvas(QGraphicsView):
         for offset, block in enumerate(visible):
             index = start + offset
             node = Node(block, index, self)
-            node.setPos(self.node_x(index), 136)
+            node.setPos(self.node_position(index))
+            node.setSelected(index in self.selected_indices)
             self.scene().addItem(node)
             self.nodes[index] = node
-        for i in range(len(visible) + 1):
-            x1 = 60 if i == 0 else 136 + (i - 1) * PITCH + CARD_WIDTH
-            x2 = 136 + i * PITCH if i < len(visible) else x1 + 80
-            path = QPainterPath(QPointF(x1, 208))
-            path.lineTo(x2, 208)
-            self.scene().addPath(path, QPen(QColor("#4a4c67"), 1.5))
-            arrow = QPainterPath(QPointF(x2 - 5, 204))
-            arrow.lineTo(x2, 208)
-            arrow.lineTo(x2 - 5, 212)
-            self.scene().addPath(arrow, QPen(QColor("#6f6b8f"), 1.5))
-            row = visible[i].start if i < len(visible) else visible[-1].end if visible else 0
+        first = self.node_position(start)
+        vertical = self.layout_mode == "vertical"
+        start_pos = first + (
+            QPointF(CARD_WIDTH / 2, -65) if vertical else QPointF(-76, CARD_HEIGHT / 2)
+        )
+        marker = StartPoint(self)
+        marker.setPos(start_pos)
+        self.scene().addItem(marker)
+        for offset in range(len(visible) + 1):
+            previous = self.node_position(start + offset - 1) if offset else None
+            next_pos = self.node_position(start + offset) if offset < len(visible) else None
+            if vertical:
+                a = (
+                    previous + QPointF(CARD_WIDTH / 2, CARD_HEIGHT)
+                    if previous
+                    else start_pos + QPointF(0, 20)
+                )
+                b = next_pos + QPointF(CARD_WIDTH / 2, 0) if next_pos else a + QPointF(0, 75)
+            else:
+                a = (
+                    previous + QPointF(CARD_WIDTH, CARD_HEIGHT / 2)
+                    if previous
+                    else start_pos + QPointF(20, 0)
+                )
+                b = next_pos + QPointF(0, CARD_HEIGHT / 2) if next_pos else a + QPointF(80, 0)
+            path = QPainterPath(a)
+            wrapping = (
+                self.layout_mode == "grid" and offset and offset % 4 == 0 and next_pos is not None
+            )
+            if wrapping:
+                a = previous + QPointF(CARD_WIDTH / 2, CARD_HEIGHT)
+                b = next_pos + QPointF(CARD_WIDTH / 2, 0)
+                path = QPainterPath(a)
+                middle_y = (a.y() + b.y()) / 2
+                path.lineTo(a.x(), middle_y)
+                path.lineTo(b.x(), middle_y)
+                path.lineTo(b)
+                middle = QPointF((a.x() + b.x()) / 2, middle_y)
+            else:
+                path.lineTo(b)
+                middle = (a + b) / 2
+            self.scene().addPath(path, QPen(QColor("#5d5877"), 1.5))
+            arrow = QPainterPath(b + (QPointF(-4, -6) if vertical or wrapping else QPointF(-6, -4)))
+            arrow.lineTo(b)
+            arrow.lineTo(b + (QPointF(4, -6) if vertical or wrapping else QPointF(-6, 4)))
+            self.scene().addPath(arrow, QPen(QColor("#8d80ae"), 1.5))
+            row = (
+                visible[offset].start
+                if offset < len(visible)
+                else visible[-1].end
+                if visible
+                else 0
+            )
             point = InsertPoint(self, row)
-            point.setPos((x1 + x2) / 2, 208)
+            point.setPos(middle)
             self.scene().addItem(point)
-        for title, x in (
-            ("START" if not self.page else "CONTINUED", 28),
-            (
-                "FINISH" if start + len(visible) == len(self.blocks) else "NEXT PAGE",
-                136 + max(0, len(visible) - 1) * PITCH + CARD_WIDTH + 47,
-            ),
-        ):
-            text = self.scene().addSimpleText(title, font(7, True))
-            text.setBrush(QColor(MUTED))
-            text.setPos(x, 246)
-        width = 136 + max(0, len(visible) - 1) * PITCH + CARD_WIDTH + 140
-        self.scene().setSceneRect(0, 0, width, 420)
+            if offset == len(visible):
+                text = self.scene().addSimpleText(
+                    "FINISH" if start + len(visible) == len(self.blocks) else "CONTINUED",
+                    font(8, True),
+                )
+                text.setBrush(QColor(MUTED))
+                text.setPos(b + QPointF(-20, 12))
+        self.scene().setSceneRect(self.scene().itemsBoundingRect().adjusted(-30, -25, 45, 60))
         self.scene().blockSignals(False)
 
-    def selection_changed(self):
-        nodes = [item for item in self.scene().selectedItems() if isinstance(item, Node)]
-        self.selected.emit(nodes[0].block if nodes else None)
-
-    def select_row(self, row, reveal=True):
-        if row < 0 or not self.blocks:
-            return
-        index = max(0, bisect_right(self.starts, row) - 1)
-        if index // PAGE_SIZE != self.page:
-            self.page = index // PAGE_SIZE
-            self.render_page()
-        self.scene().blockSignals(True)
-        self.scene().clearSelection()
-        node = self.nodes.get(index)
-        if node:
-            node.setSelected(True)
-            if reveal:
-                self.ensureVisible(node, 60, 50)
-        self.scene().blockSignals(False)
-
-    def highlight(self, row):
-        if row >= 0:
-            index = max(0, bisect_right(self.starts, row) - 1)
+    def choose_indices(self, indices, emit=True, reveal=False):
+        self.selected_indices = {i for i in indices if 0 <= i < len(self.blocks)}
+        if reveal and self.selected_indices:
+            index = min(self.selected_indices)
             if index // PAGE_SIZE != self.page:
                 self.page = index // PAGE_SIZE
                 self.render_page()
-        else:
-            index = -1
-        for key, node in self.nodes.items():
-            if node.playing != (key == index):
-                node.playing = key == index
+        self.scene().blockSignals(True)
+        for i, node in self.nodes.items():
+            node.setSelected(i in self.selected_indices)
+        self.scene().blockSignals(False)
+        if reveal and self.selected_indices and min(self.selected_indices) in self.nodes:
+            self.ensureVisible(self.nodes[min(self.selected_indices)], 40, 40)
+        if emit:
+            self.selected.emit([self.blocks[i] for i in sorted(self.selected_indices)])
+
+    def selection_changed(self):
+        selected = {item.index for item in self.scene().selectedItems() if isinstance(item, Node)}
+        outside = self.selected_indices - set(self.nodes)
+        self.selected_indices = outside | selected
+        self.selected.emit([self.blocks[i] for i in sorted(self.selected_indices)])
+
+    def select_row(self, row, reveal=True):
+        if row >= 0 and self.blocks:
+            self.choose_indices(
+                {max(0, bisect_right(self.starts, row) - 1)}, emit=False, reveal=reveal
+            )
+
+    def highlight(self, row):
+        index = max(0, bisect_right(self.starts, row) - 1) if row >= 0 and self.blocks else -1
+        if index >= 0 and index // PAGE_SIZE != self.page:
+            self.page = index // PAGE_SIZE
+            self.render_page()
+        for i, node in self.nodes.items():
+            if node.playing != (i == index):
+                node.playing = i == index
                 node.update()
         if index in self.nodes:
-            self.ensureVisible(self.nodes[index], 60, 50)
+            self.ensureVisible(self.nodes[index], 40, 40)
 
     def zoom(self, factor):
         current = self.transform().m11()
-        target = max(0.5, min(1.6, current * factor))
+        target = max(0.4, min(1.8, current * factor))
         self.scale(target / current, target / current)
         self.zoomChanged.emit(round(target * 100))
 
     def fit(self):
-        count = min(PAGE_SIZE, len(self.blocks) - self.page * PAGE_SIZE)
-        width = 136 + max(0, count - 1) * PITCH + CARD_WIDTH + 140
-        scale = max(0.6, min(1, (self.viewport().width() - 24) / width))
+        bounds = self.sceneRect()
+        scale = max(
+            0.5,
+            min(
+                1,
+                (self.viewport().width() - 30) / max(1, bounds.width()),
+                (self.viewport().height() - 30) / max(1, bounds.height()),
+            ),
+        )
         self.resetTransform()
         self.scale(scale, scale)
-        self.horizontalScrollBar().setValue(0)
+        self.centerOn(bounds.center())
+        if (
+            bounds.width() * scale > self.viewport().width()
+            or bounds.height() * scale > self.viewport().height()
+        ):
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().minimum())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().minimum())
         self.zoomChanged.emit(round(scale * 100))
+
+    def mousePressEvent(self, event):
+        if (
+            event.button() == Qt.LeftButton
+            and event.modifiers() & Qt.ShiftModifier
+            and not isinstance(
+                self.itemAt(event.position().toPoint()), (Node, InsertPoint, StartPoint)
+            )
+        ):
+            self.setDragMode(QGraphicsView.RubberBandDrag)
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        self.setDragMode(QGraphicsView.ScrollHandDrag)
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.ControlModifier:
             self.zoom(1.12 if event.angleDelta().y() > 0 else 1 / 1.12)
-        elif event.angleDelta().x() or event.modifiers() & Qt.ShiftModifier:
-            super().wheelEvent(event)
-        else:
+        elif self.layout_mode == "horizontal" and not event.modifiers() & Qt.ShiftModifier:
             bar = self.horizontalScrollBar()
             bar.setValue(bar.value() - event.angleDelta().y())
+        else:
+            super().wheelEvent(event)
         event.accept()
 
     def keyPressEvent(self, event):
-        command = {
-            Qt.Key_Delete: "delete",
-            Qt.Key_Backspace: "delete",
-            Qt.Key_Left: "select_left",
-            Qt.Key_Right: "select_right",
-        }.get(event.key())
-        if command and event.modifiers() & Qt.AltModifier:
-            command = {"select_left": "left", "select_right": "right"}.get(command, command)
-        if command:
+        if event.key() == Qt.Key_F1:
+            self.command.emit("help")
+            return
+        command = editing_command(event)
+        arrows = {Qt.Key_Left: "left", Qt.Key_Right: "right", Qt.Key_Up: "up", Qt.Key_Down: "down"}
+        if event.key() in arrows:
+            direction = arrows[event.key()]
+            command = (
+                direction
+                if event.modifiers() & Qt.AltModifier
+                else ("extend_" if event.modifiers() & Qt.ShiftModifier else "select_") + direction
+            )
+        if event.modifiers() & Qt.ControlModifier and event.key() in (
+            Qt.Key_Plus,
+            Qt.Key_Equal,
+            Qt.Key_Minus,
+            Qt.Key_0,
+        ):
+            self.fit() if event.key() == Qt.Key_0 else self.zoom(
+                1 / 1.2 if event.key() == Qt.Key_Minus else 1.2
+            )
+        elif command:
             self.command.emit(command)
         else:
             super().keyPressEvent(event)
@@ -413,11 +599,30 @@ class Workflow(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.canvas = Canvas()
+        self.selection_bar = QWidget()
+        selection = QHBoxLayout(self.selection_bar)
+        selection.setContentsMargins(10, 5, 10, 5)
+        self.selection_label = QLabel("No actions selected")
+        self.selection_label.setObjectName("muted")
+        selection.addWidget(self.selection_label)
+        for text, command in (
+            ("Copy", "copy"),
+            ("Paste", "paste"),
+            ("Duplicate", "duplicate"),
+            ("Delete", "delete"),
+        ):
+            btn = QPushButton(text)
+            btn.setObjectName("ghost")
+            btn.clicked.connect(lambda checked=False, c=command: self.canvas.command.emit(c))
+            selection.addWidget(btn)
+        selection.addStretch()
+        layout.addWidget(self.selection_bar)
         layout.addWidget(self.canvas, 1)
         footer = QHBoxLayout()
         footer.setContentsMargins(14, 8, 14, 8)
         self.page_label = QLabel("Actions run from left to right")
         self.page_label.setObjectName("muted")
+        self.page_label.setWordWrap(True)
         footer.addWidget(self.page_label)
         self.previous = QPushButton("Previous")
         self.next = QPushButton("Next")
@@ -426,6 +631,10 @@ class Workflow(QWidget):
             widget.clicked.connect(lambda checked=False, d=delta: self.change_page(d))
             footer.addWidget(widget)
         footer.addStretch()
+        keys = QPushButton("Keys · F1")
+        keys.setObjectName("ghost")
+        keys.clicked.connect(lambda: self.canvas.command.emit("help"))
+        footer.addWidget(keys)
         for name, tip, callback in (
             ("minus", "Zoom out", lambda: self.canvas.zoom(1 / 1.2)),
             ("plus", "Zoom in", lambda: self.canvas.zoom(1.2)),
@@ -438,6 +647,16 @@ class Workflow(QWidget):
             btn.setAccessibleName(tip)
             btn.clicked.connect(callback)
             footer.addWidget(btn)
+        self.layout_choice = QComboBox()
+        for text, value in (
+            ("Horizontal", "horizontal"),
+            ("Vertical", "vertical"),
+            ("Grid", "grid"),
+        ):
+            self.layout_choice.addItem(text, value)
+        self.layout_choice.setToolTip("Layout only; playback always follows action numbers")
+        self.layout_choice.currentIndexChanged.connect(self.apply_layout)
+        footer.insertWidget(1, self.layout_choice)
         self.zoom_label = QLabel("100%")
         self.zoom_label.setObjectName("muted")
         footer.addWidget(self.zoom_label)
@@ -447,15 +666,23 @@ class Workflow(QWidget):
 
     def update_footer(self):
         count = len(self.canvas.blocks)
+        selected = len(self.canvas.selected_indices)
+        self.selection_label.setText(f"{selected:,} selected")
+        self.selection_bar.setVisible(selected > 0)
         self.previous.setVisible(count > PAGE_SIZE)
         self.next.setVisible(count > PAGE_SIZE)
         self.previous.setEnabled(self.canvas.page > 0)
         self.next.setEnabled((self.canvas.page + 1) * PAGE_SIZE < count)
         self.page_label.setText(
-            f"{count:,} actions · drag to reorder · scroll to explore"
+            f"{count:,} actions · Shift-drag selects"
             if count <= PAGE_SIZE
             else f"Actions {self.canvas.page * PAGE_SIZE + 1:,}–{min(count, (self.canvas.page + 1) * PAGE_SIZE):,} of {count:,}"
         )
+
+    def apply_layout(self):
+        self.canvas.layout_mode = self.layout_choice.currentData()
+        self.canvas.render_page()
+        self.canvas.fit()
 
     def change_page(self, delta):
         page = self.canvas.page + delta
@@ -464,4 +691,3 @@ class Workflow(QWidget):
             self.canvas.render_page()
             self.canvas.horizontalScrollBar().setValue(0)
             self.update_footer()
-            self.canvas.selected.emit(self.canvas.blocks[page * PAGE_SIZE])

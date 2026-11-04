@@ -21,15 +21,18 @@ COLORS = {
 }
 
 PATHS = {
+    "press": '<rect x="3" y="10" width="14" height="8" rx="2"/><path d="M10 2v10m-3-3 3 3 3-3"/>',
+    "release": '<rect x="3" y="10" width="14" height="8" rx="2"/><path d="M10 11V2M7 5l3-3 3 3"/>',
+    "select": '<path d="M3 3h5m-5 0v5m14-5h-5m5 0v5M3 17h5m-5 0v-5m14 5h-5m5 0v-5"/>',
     "moon": '<path d="M17.8 13.2A7.5 7.5 0 0 1 8.8 3a7.7 7.7 0 1 0 9 10.2Z"/>',
     "flow": '<rect x="2" y="7" width="5" height="6" rx="1.3"/><rect x="13" y="7" width="5" height="6" rx="1.3"/><path d="M7 10h6m-2-2 2 2-2 2"/>',
     "list": '<path d="M7 5h11M7 10h11M7 15h11M2 5h1M2 10h1M2 15h1"/>',
     "library": '<rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14m-9 0v10m3-6h3m-3 3h3"/>',
     "settings": '<path d="m8 2-.7 2-2 .8-2-.6-1.5 2.6 1.5 1.6v2.3l-1.5 1.6 1.5 2.6 2-.6 2 .8.7 2h3l.7-2 2-.8 2 .6 1.5-2.6-1.5-1.6V8.4l1.5-1.6-1.5-2.6-2 .6-2-.8-.7-2Z"/><circle cx="9.5" cy="9.5" r="3"/>',
-    "play": '<path d="m7 4 9 6-9 6Z"/>',
-    "pause": '<path d="M7 4v12M13 4v12"/>',
-    "stop": '<rect x="5" y="5" width="10" height="10" rx="1.5"/>',
-    "record": '<circle cx="10" cy="10" r="5"/>',
+    "play": '<path d="m6 3 11 7-11 7Z" fill="currentColor" stroke="none"/>',
+    "pause": '<path d="M6 3h3v14H6Zm5 0h3v14h-3Z" fill="currentColor" stroke="none"/>',
+    "stop": '<rect x="4" y="4" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>',
+    "record": '<circle cx="10" cy="10" r="6" fill="currentColor" stroke="none"/>',
     "plus": '<path d="M10 4v12M4 10h12"/>',
     "minus": '<path d="M4 10h12"/>',
     "right": '<path d="m8 5 5 5-5 5"/>',
@@ -62,7 +65,7 @@ PATHS = {
 def icon(name, color=MUTED, size=20):
     data = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
-        f'viewBox="0 0 20 20" fill="none" stroke="{color}" stroke-width="1.6" '
+        f'viewBox="0 0 20 20" color="{color}" fill="none" stroke="{color}" stroke-width="1.8" '
         f'stroke-linecap="round" stroke-linejoin="round">{PATHS[name]}</svg>'
     )
     pixmap = QPixmap()

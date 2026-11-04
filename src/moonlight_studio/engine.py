@@ -1,8 +1,9 @@
 """Interruptible replay with a monotonic clock, independent of the GUI loop."""
 
+import random
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .models import Script, Step, number
 
@@ -24,19 +25,30 @@ class PlaybackOptions:
     repeats: int = 1
     countdown: float = 3.0
     loop_gap: float = 0.25
+    start_position: tuple[int, int] | None = None
+    start_settle: float = 0.15
 
     def __post_init__(self):
         number(self.speed, "Speed", 0.1, 10)
         number(self.countdown, "Countdown", 0, 30)
         number(self.loop_gap, "Loop gap", 0, 3600)
+        number(self.start_settle, "Cursor settle delay", 0, 10)
+        if self.start_position is not None:
+            from .pointer import coordinate
+
+            if not isinstance(self.start_position, (tuple, list)) or len(self.start_position) != 2:
+                raise ValueError("Starting point must contain X and Y")
+            for value in self.start_position:
+                coordinate(value)
         if type(self.repeats) is not int or not 0 <= self.repeats <= 100_000:
             raise ValueError("Repeat count must be 0 (until stopped) through 100,000")
 
 
 class Replay:
-    def __init__(self, backend_factory, notify=lambda *args: None):
+    def __init__(self, backend_factory, notify=lambda *args: None, rng=None):
         self.backend_factory = backend_factory
         self.notify = notify
+        self.rng = rng if rng is not None else random.Random()
         self._condition = threading.Condition()
         self._stop = False
         self._paused = False
@@ -50,7 +62,21 @@ class Replay:
         if self.running:
             raise RuntimeError("Playback is already running")
         script.validate()
-        snapshot = Script(script.name, script.notes, list(script.steps), script.version)
+        snapshot = Script(
+            script.name,
+            script.notes,
+            list(script.steps),
+            script.version,
+            dict(script.start) if script.start is not None else None,
+        )
+        if snapshot.start is not None and options.start_position is None:
+            options = replace(
+                options,
+                start_position=(snapshot.start["x"], snapshot.start["y"]),
+                start_settle=snapshot.start["settle_ms"] / 1000,
+            )
+        if options.start_position is not None:
+            options = replace(options, start_position=tuple(options.start_position))
         if not any(s.enabled for s in snapshot.steps):
             raise ValueError("Add or enable at least one step first")
         self._stop = self._paused = False
@@ -112,9 +138,18 @@ class Replay:
             backend = self.backend_factory()
             if hasattr(backend, "prepare"):
                 backend.prepare(script.steps)
+            if options.start_position is not None:
+                if script.start is not None and getattr(
+                    backend, "coordinate_space", script.start["space"]
+                ) not in (None, script.start["space"]):
+                    raise ValueError(
+                        "The script starting point uses a different coordinate space from the selected destination"
+                    )
+                backend.prepare_start(options.start_position)
             lead_in = max(options.countdown, getattr(backend, "startup_delay", 0))
             self.notify("state", f"Starting in {lead_in:g}s…")
             # Targets need only be focused when the countdown finishes.
+            self.notify("countdown", lead_in)
             deadline = self._wait(time.monotonic() + lead_in, _NoCheck(), held)
             if deadline is None:
                 return
@@ -122,14 +157,34 @@ class Replay:
             self.notify("state", "Playing")
             loop = 0
             last_progress = 0.0
+            last_wait_report = 0.0
             while not self._stop and (options.repeats == 0 or loop < options.repeats):
                 loop += 1
+                self.notify("cycle", loop)
+                if options.start_position is not None:
+                    if self._stop:
+                        return
+                    backend.begin_cycle(options.start_position)
+                    self.notify(
+                        "state",
+                        f"Loop {loop} · starting at {options.start_position[0]}, {options.start_position[1]}",
+                    )
+                    deadline = self._wait(time.monotonic() + options.start_settle, backend, held)
+                    if deadline is None:
+                        return
                 for index, step in enumerate(script.steps):
                     if not step.enabled:
                         continue
-                    deadline = self._wait(
-                        deadline + step.delay_ms / 1000 / options.speed, backend, held
-                    )
+                    duration = step.sample_delay(self.rng) / 1000 / options.speed
+                    now = time.monotonic()
+                    if (
+                        duration >= 0.05
+                        or now - last_wait_report >= 1 / 30
+                        or index == len(script.steps) - 1
+                    ):
+                        self.notify("waiting", (index, loop, duration))
+                        last_wait_report = now
+                    deadline = self._wait(deadline + duration, backend, held)
                     if deadline is None:
                         return
                     backend.check()
@@ -176,7 +231,15 @@ class _NoCheck:
 class DryRun:
     """Exercises scheduling without opening any input device."""
 
+    coordinate_space = None
+
     def check(self):
+        pass
+
+    def prepare_start(self, point):
+        pass
+
+    def begin_cycle(self, point):
         pass
 
     def send(self, step):

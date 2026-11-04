@@ -1,37 +1,43 @@
 import json
+import math
+import threading
 import time
 from bisect import bisect_right
-from dataclasses import replace
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QItemSelection, QItemSelectionModel, QObject, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QCursor, QKeySequence, QUndoStack
+from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QAction, QKeySequence, QUndoStack
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QApplication,
+    QComboBox,
     QDialog,
     QFileDialog,
+    QLineEdit,
     QListWidgetItem,
     QMainWindow,
-    QMenu,
     QMessageBox,
+    QPlainTextEdit,
+    QTextEdit,
 )
 
 from . import storage, x11
 from .designer import build_ui
-from .editor import StepModel
+from .editing import EditingMixin
+from .editor import StepModel, editing_command
 from .engine import DryRun, PlaybackOptions, Replay
 from .linux_input import DeviceMonitor, Recorder, UInputBackend, devices, diagnostics
 from .models import KEY_CODES, MAX_STEPS, Script, Step
 from .preferences import Preferences
 from .theme import STYLE, icon
-from .workflow import blocks_for
 
 
 class Bridge(QObject):
     replay = Signal(str, object)
     hotkey = Signal(int, str)
     monitor_error = Signal(int, str)
+    position_picked = Signal(int, object, str)
 
 
 def sample():
@@ -48,7 +54,7 @@ def sample():
     )
 
 
-class MainWindow(QMainWindow):
+class MainWindow(EditingMixin, QMainWindow):
     def __init__(self, config_dir=None, demo=False):
         super().__init__()
         self.config_dir = Path(config_dir) if config_dir else storage.data_dir()
@@ -67,6 +73,11 @@ class MainWindow(QMainWindow):
         self.loading = False
         self.busy = False
         self.record_pending = False
+        self.playback_deadline = None
+        self.playback_started = False
+        self.pick_deadline = None
+        self.pick_generation = 0
+        self.picking = False
         self.monitor = None
         self.monitor_generation = 0
         self.monitor_ok = False
@@ -75,10 +86,13 @@ class MainWindow(QMainWindow):
         self.bridge.replay.connect(self.on_replay)
         self.bridge.hotkey.connect(self.route_hotkey)
         self.bridge.monitor_error.connect(self.route_monitor_error)
+        self.bridge.position_picked.connect(self.position_picked)
         self.undo = QUndoStack(self)
         self.undo.setUndoLimit(50)
         self.model = StepModel(self.undo)
         self.model.invalid.connect(self.show_error)
+        self.pending_rows = None
+        self.script_version = 1
         self.selection_anchor = -1
         self.active_block = None
         self._sync_selection = False
@@ -122,6 +136,22 @@ class MainWindow(QMainWindow):
     def build_ui(self):
         build_ui(self)
 
+    def keyPressEvent(self, event):
+        focus = QApplication.focusWidget()
+        while focus is not None and focus is not self:
+            if isinstance(
+                focus, (QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QAbstractSpinBox)
+            ):
+                super().keyPressEvent(event)
+                return
+            focus = focus.parentWidget()
+        command = "help" if event.key() == Qt.Key_F1 else editing_command(event)
+        if command and self.pages.currentIndex() == 0:
+            self.workflow_command(command)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
     @Slot(bool)
     def update_undo_actions(self, _enabled=False):
         self.undo_btn.setEnabled(not self.busy and self.undo.canUndo())
@@ -144,6 +174,9 @@ class MainWindow(QMainWindow):
             (self.repeats, prefs.repeats),
             (self.countdown, prefs.countdown),
             (self.gap, prefs.loop_gap),
+            (self.start_x, prefs.start_x),
+            (self.start_y, prefs.start_y),
+            (self.start_settle, prefs.start_settle_ms),
         ):
             widget.setValue(value)
             widget.valueChanged.connect(self.save_preferences)
@@ -157,9 +190,16 @@ class MainWindow(QMainWindow):
             widget.setChecked(value)
             widget.toggled.connect(self.save_preferences)
         self.update_run_summary()
+        self.workflow.layout_choice.setCurrentIndex(
+            self.workflow.layout_choice.findData(prefs.layout)
+        )
+        for widget in (self.start_x, self.start_y, self.start_settle):
+            widget.valueChanged.connect(self.start_settings_changed)
+        self.start_enabled.toggled.connect(self.start_settings_changed)
+        self.mode.currentIndexChanged.connect(self.start_settings_changed)
 
     def save_preferences(self, *args):
-        if self.initializing:
+        if self.initializing or self.loading:
             return
         prefs = self.preferences
         prefs.speed, prefs.repeats = self.speed.value(), self.repeats.value()
@@ -169,6 +209,12 @@ class MainWindow(QMainWindow):
             self.capture_buttons.isChecked(),
         )
         prefs.capture_motion = self.capture_motion.isChecked()
+        prefs.layout = self.workflow.layout_choice.currentData()
+        prefs.start_x, prefs.start_y, prefs.start_settle_ms = (
+            self.start_x.value(),
+            self.start_y.value(),
+            self.start_settle.value(),
+        )
         prefs.append_recording, prefs.test_mode = (
             self.append_recording.isChecked(),
             self.test_mode.isChecked(),
@@ -203,9 +249,20 @@ class MainWindow(QMainWindow):
         # Global F-key controls come only from evdev. Qt bindings would double-fire.
 
     def script(self):
-        return Script(
-            self.name.text().strip(), self.notes.toPlainText(), list(self.model.steps)
-        ).validate()
+        script = Script(
+            self.name.text().strip(),
+            self.notes.toPlainText(),
+            list(self.model.steps),
+            self.script_version,
+        )
+        if self.start_enabled.isChecked():
+            script.start = {
+                "x": self.start_x.value(),
+                "y": self.start_y.value(),
+                "settle_ms": self.start_settle.value(),
+                "space": "window" if self.mode.currentIndex() else "desktop",
+            }
+        return script.validate()
 
     def dirty(self):
         try:
@@ -224,8 +281,12 @@ class MainWindow(QMainWindow):
 
     def update_stats(self):
         duration = sum(s.delay_ms for s in self.model.steps if s.enabled) / 1000
+        maximum = sum(s.maximum_ms for s in self.model.steps if s.enabled) / 1000
         self.stats.setText(
-            f"{len(self.blocks):,} actions · {duration:.2f} s" if self.model.steps else ""
+            f"{len(self.blocks):,} actions · {duration:.2f}"
+            + (f"–{maximum:.2f} s" if maximum != duration else " s")
+            if self.model.steps
+            else ""
         )
 
     def navigate(self, page, view=0):
@@ -254,21 +315,59 @@ class MainWindow(QMainWindow):
     def update_run_summary(self):
         if not hasattr(self, "transport_hint"):
             return
-        self.transport_hint.setText(
-            "Preview only · no input sent"
+        target = self.target.currentData()
+        summary = (
+            "Preview · no input sent"
             if self.test_mode.isChecked()
-            else "Background window"
+            else ("Window: " + target.title if target is not None else "Choose a target window")
             if self.mode.currentIndex()
             else "Active desktop"
+        )
+        if self.start_enabled.isChecked():
+            summary += f" · Start {self.start_x.value()}, {self.start_y.value()}"
+        self.transport_hint.setMaximumWidth(240)
+        self.transport_hint.setToolTip(summary)
+        self.transport_hint.setText(
+            self.transport_hint.fontMetrics().elidedText(summary, Qt.ElideRight, 230)
         )
         self.record_btn.setToolTip(
             "Append a recording to the current actions · F6"
             if self.append_recording.isChecked()
             else "Replace actions with a recording; Undo restores them · F6"
         )
+        from .pointer import capability
+
+        available, description = capability()
+        background = self.mode.currentIndex() == 1
+        self.start_capability.setText(
+            "Target window client coordinates; real cursor stays unchanged."
+            if background
+            else description
+        )
+        for widget in (self.start_x, self.start_y, self.start_settle):
+            widget.setEnabled(not self.busy and self.start_enabled.isChecked())
+        self.pick_position_btn.setEnabled(
+            not self.busy and not background and available and self.start_enabled.isChecked()
+        )
+        start_label = (
+            f"{self.start_x.value()}, {self.start_y.value()}"
+            if self.start_enabled.isChecked()
+            else "START"
+        )
+        if self.workflow.canvas.start_label != start_label:
+            self.workflow.canvas.start_label = start_label
+            self.workflow.canvas.render_page()
         cycle = sum(s.delay_ms for s in self.model.steps if s.enabled) / self.speed.value() / 1000
+        cycle_max = (
+            sum(s.maximum_ms for s in self.model.steps if s.enabled) / self.speed.value() / 1000
+        )
+        if self.start_enabled.isChecked():
+            cycle += self.start_settle.value() / 1000
+            cycle_max += self.start_settle.value() / 1000
         count = self.repeats.value()
-        estimate = f"{cycle:.2f} s per cycle"
+        estimate = f"{cycle:.2f}" + (
+            f"–{cycle_max:.2f} s per cycle" if cycle_max != cycle else " s per cycle"
+        )
         if count:
             total = (
                 max(
@@ -285,6 +384,91 @@ class MainWindow(QMainWindow):
             estimate += " · repeats until stopped"
         self.run_estimate.setText(estimate)
 
+    def start_settings_changed(self, *args):
+        self.update_run_summary()
+        if not self.loading and not self.initializing:
+            self.edited()
+
+    def pick_position(self):
+        if self.busy or self.mode.currentIndex():
+            return
+        self.pick_generation += 1
+        self.picking = True
+        self.pick_deadline = time.monotonic() + 3
+        self.countdown_total = 3
+        self.update_busy(True)
+        self.update_countdown()
+
+    @Slot(int, object, str)
+    def position_picked(self, generation, point, error):
+        if generation != self.pick_generation or not self.picking:
+            return
+        self.picking = False
+        self.pick_deadline = None
+        self.countdown_banner.hide()
+        self.update_busy(False)
+        if error:
+            self.show_error(error)
+        else:
+            self.start_x.setValue(point[0])
+            self.start_y.setValue(point[1])
+            self.status.setText(f"Starting point captured: {point[0]}, {point[1]}")
+
+    def update_countdown(self):
+        now = time.monotonic()
+        deadline = (
+            self.pick_deadline
+            if self.picking
+            else self.record_deadline
+            if self.record_pending
+            else self.playback_deadline
+        )
+        if deadline is None:
+            self.countdown_banner.hide()
+            return
+        remaining = max(0, deadline - now)
+        self.countdown_banner.setVisible(remaining > 0)
+        if remaining > 0:
+            self.countdown_number.setText(str(math.ceil(remaining)))
+            self.countdown_message.setText(
+                "Place your cursor at the starting point. F12 cancels."
+                if self.picking
+                else "Recording starts soon. Switch to your target window. F12 cancels."
+                if self.record_pending
+                else "Preview starts soon. No inputs will be sent. F12 cancels."
+                if self.test_mode.isChecked()
+                else "Playback starts soon. Switch to your target window. F12 cancels."
+            )
+            self.countdown_progress.setValue(
+                round((1 - remaining / max(0.001, self.countdown_total)) * 1000)
+            )
+        elif self.picking:
+            self.pick_deadline = None
+            generation = self.pick_generation
+
+            def read_position():
+                provider = None
+                try:
+                    from .pointer import coordinate, desktop_pointer
+
+                    provider = desktop_pointer()
+                    point = tuple(coordinate(v) for v in provider.position())
+                    if generation == self.pick_generation and self.picking:
+                        self.bridge.position_picked.emit(generation, point, "")
+                except Exception as exc:
+                    if generation == self.pick_generation and self.picking:
+                        try:
+                            self.bridge.position_picked.emit(generation, None, str(exc))
+                        except RuntimeError:
+                            pass
+                finally:
+                    if provider is not None:
+                        provider.close()
+
+            threading.Thread(target=read_position, daemon=True).start()
+        else:
+            self.playback_deadline = None
+
     def filter_library(self):
         query = self.library_search.text().strip().lower()
         visible = 0
@@ -299,151 +483,19 @@ class MainWindow(QMainWindow):
             else "No saved workflows yet. Use Save workflow to add your first one."
         )
 
-    def refresh_workflow(self):
-        self.blocks = blocks_for(self.model.steps)
-        row = min(self.selection_anchor, len(self.model.steps) - 1)
-        self.workflow.canvas.rebuild(self.blocks, row)
-        self.workflow.update_footer()
-        self.update_stats()
-        if self.blocks and row >= 0:
-            index = max(0, bisect_right(self.workflow.canvas.starts, row) - 1)
-            self.select_block(self.blocks[index], open_inspector=False)
-        else:
-            self.active_block = None
-            self.action_inspector.select(None, self.model.steps)
-        if self.pages.currentIndex() == 0:
-            self.navigate(0, 1 if self.events_btn.isChecked() else 0)
-
-    def select_block(self, block, open_inspector=True):
-        if self._sync_selection or self.busy:
-            return
-        self.active_block = block
-        self.action_inspector.select(block, self.model.steps)
-        self._sync_selection = True
-        self.table.clearSelection()
-        if block is not None:
-            self.selection_anchor = block.start
-            selected = QItemSelection(
-                self.model.index(block.start, 0), self.model.index(block.end - 1, 5)
-            )
-            self.table.selectionModel().select(
-                selected, QItemSelectionModel.Select | QItemSelectionModel.Rows
-            )
-            self.workflow.canvas.select_row(block.start, reveal=False)
-            if open_inspector:
-                self.show_inspector(0)
-        else:
-            self.selection_anchor = -1
-        self._sync_selection = False
-
-    def table_selection_changed(self, *args):
-        if self._sync_selection or self.busy:
-            return
-        rows = self.selected_rows()
-        if not rows or not self.blocks:
-            return
-        row = rows[0]
-        self.selection_anchor = row
-        index = max(0, bisect_right(self.workflow.canvas.starts, row) - 1)
-        self.active_block = self.blocks[index]
-        self.action_inspector.select(self.active_block, self.model.steps)
-        self.workflow.canvas.select_row(row)
-        self.workflow.update_footer()
-
-    def choose_action(self, row=None):
-        if self.busy:
-            return
-        # clicked(bool) is distinct from a canvas insertion row.
-        row = row if type(row) is int else None
-        menu = QMenu(self)
-        for kind, (title, glyph) in enumerate(
-            (
-                ("Keyboard press", "key"),
-                ("Mouse click", "mouse"),
-                ("Wait", "wait"),
-                ("Move pointer", "move"),
-                ("Scroll", "scroll"),
-            )
-        ):
-            item = menu.addAction(icon(glyph), title)
-            item.triggered.connect(lambda checked=False, k=kind, r=row: self.add_step(k, r))
-        menu.exec(QCursor.pos())
-
-    def apply_block(self, block, values):
-        if self.busy or block not in self.blocks:
-            return
-        try:
-            subset = list(self.model.steps[block.start : block.end])
-            original_duration = sum(s.delay_ms for s in subset[1:])
-            for i, step in enumerate(subset):
-                edits = {"enabled": values["enabled"]}
-                if i == 0:
-                    edits["delay_ms"] = values["delay"]
-                elif len(subset) == 2:
-                    edits["delay_ms"] = values["duration"]
-                elif original_duration:
-                    edits["delay_ms"] = step.delay_ms * values["duration"] / original_duration
-                else:
-                    edits["delay_ms"] = values["duration"] / (len(subset) - 1)
-                if block.kind in ("key", "mouse"):
-                    edits["code"] = values["code"]
-                elif block.kind in ("move", "scroll") and len(subset) == 1:
-                    edits.update(x=values["x"], y=values["y"])
-                subset[i] = replace(step, **edits)
-            self.selection_anchor = block.start
-            self.model.commit(
-                self.model.steps[: block.start] + subset + self.model.steps[block.end :],
-                "Edit action",
-            )
-            self.status.setText("Action updated · Undo is available")
-        except (ValueError, TypeError) as exc:
-            self.show_error(str(exc))
-
-    def reorder_blocks(self, source, target):
-        if (
-            self.busy
-            or source == target
-            or not 0 <= source < len(self.blocks)
-            or not 0 <= target < len(self.blocks)
-        ):
-            return
-        block, other = self.blocks[source], self.blocks[target]
-        steps = list(self.model.steps)
-        moving = steps[block.start : block.end]
-        del steps[block.start : block.end]
-        destination = other.end - len(moving) if target > source else other.start
-        steps[destination:destination] = moving
-        self.selection_anchor = destination
-        self.model.commit(steps, "Reorder action")
-
-    def workflow_command(self, command):
-        if self.busy or not self.active_block:
-            return
-        block = self.active_block
-        index = self.blocks.index(block)
-        if command == "duplicate":
-            self.select_block(block)
-            self.duplicate()
-        elif command == "delete":
-            self.select_block(block)
-            self.delete()
-        elif command == "toggle":
-            steps = list(self.model.steps)
-            steps[block.start : block.end] = [
-                replace(s, enabled=not block.enabled) for s in steps[block.start : block.end]
-            ]
-            self.model.commit(steps, "Toggle action")
-        elif command in ("left", "right"):
-            self.reorder_blocks(index, index + (-1 if command == "left" else 1))
-        elif command in ("select_left", "select_right"):
-            target = index + (-1 if command == "select_left" else 1)
-            if 0 <= target < len(self.blocks):
-                self.select_block(self.blocks[target])
-                self.workflow.canvas.select_row(self.blocks[target].start)
-
     def load_script(self, script, path=None):
         self.loading = True
         self.path = Path(path) if path else None
+        self.script_version = script.version
+        self.pending_rows = None
+        self._event_selection_rows = []
+        self.start_enabled.setChecked(False)
+        if script.start is not None:
+            self.mode.setCurrentIndex(1 if script.start["space"] == "window" else 0)
+            self.start_x.setValue(script.start["x"])
+            self.start_y.setValue(script.start["y"])
+            self.start_settle.setValue(script.start["settle_ms"])
+            self.start_enabled.setChecked(True)
         self.selection_anchor = 0 if script.steps else -1
         self.name.setText(script.name)
         self.notes.setPlainText(script.notes)
@@ -489,6 +541,29 @@ class MainWindow(QMainWindow):
             self.load_script(sample())
             self.test_mode.setChecked(True)
             self.status.setText("Example loaded • test mode is on")
+
+    def load_controls_example(self):
+        if not self.confirm_discard():
+            return
+        from .actions import create_action
+
+        steps = (
+            create_action(5, "KEY_E")
+            + create_action(2, duration=200, maximum=400)
+            + create_action(6, "KEY_E")
+            + create_action(0, "KEY_W", duration=500, maximum=750)
+            + create_action(1, "BTN_LEFT", duration=60)
+            + create_action(3)
+        )
+        self.load_script(
+            Script(
+                "Input controls",
+                "Press E, wait, release E, hold W, click and move. Test mode sends no input.",
+                steps,
+            )
+        )
+        self.test_mode.setChecked(True)
+        self.status.setText("Input controls example · Test mode is on · F1 shows shortcuts")
 
     def open_script(self):
         if not self.confirm_discard():
@@ -581,62 +656,6 @@ class MainWindow(QMainWindow):
             except (ValueError, OSError) as exc:
                 self.show_error(f"Could not recover autosave: {exc}")
 
-    def selected_rows(self):
-        return sorted({i.row() for i in self.table.selectionModel().selectedRows()})
-
-    def add_step(self, kind=0, row=None):
-        if self.busy:
-            return
-        choices = [
-            [Step(100, "key_down", "KEY_SPACE"), Step(60, "key_up", "KEY_SPACE")],
-            [Step(100, "key_down", "BTN_LEFT"), Step(60, "key_up", "BTN_LEFT")],
-            [Step(250, "wait")],
-            [Step(16, "move", x=10)],
-            [Step(100, "scroll", y=1)],
-        ]
-        rows = self.selected_rows()
-        at = row if row is not None else rows[-1] + 1 if rows else len(self.model.steps)
-        self.selection_anchor = at
-        self.model.commit(
-            self.model.steps[:at] + choices[kind] + self.model.steps[at:], "Add steps"
-        )
-        self.workflow.canvas.select_row(at)
-        self.navigate(0, 1 if self.events_btn.isChecked() else 0)
-        if self.active_block:
-            self.select_block(self.active_block)
-
-    def duplicate(self):
-        rows = self.selected_rows()
-        if rows:
-            at = rows[-1] + 1
-            self.model.commit(
-                self.model.steps[:at] + [self.model.steps[i] for i in rows] + self.model.steps[at:],
-                "Duplicate steps",
-            )
-
-    def delete(self):
-        rows = set(self.selected_rows())
-        self.model.commit(
-            [s for i, s in enumerate(self.model.steps) if i not in rows], "Delete steps"
-        )
-
-    def move(self, direction):
-        rows = self.selected_rows()
-        if not rows or rows != list(range(rows[0], rows[-1] + 1)):
-            self.status.setText("Select a consecutive group of steps to move")
-            return
-        if rows[0] + direction < 0 or rows[-1] + direction >= len(self.model.steps):
-            return
-        steps = list(self.model.steps)
-        if direction < 0:
-            item = steps.pop(rows[0] - 1)
-            steps.insert(rows[-1], item)
-        else:
-            item = steps.pop(rows[-1] + 1)
-            steps.insert(rows[0], item)
-        self.model.commit(steps, "Move steps")
-        self.table.selectRow(rows[0] + direction)
-
     def update_busy(self, busy):
         self.busy = busy
         for widget in (
@@ -662,9 +681,16 @@ class MainWindow(QMainWindow):
             self.capture_motion,
             self.append_recording,
             self.apply_devices_btn,
+            self.start_enabled,
+            self.start_x,
+            self.start_y,
+            self.start_settle,
+            self.pick_position_btn,
         ):
             widget.setEnabled(not busy)
         self.play_btn.setEnabled(not self.recorder.active and not self.record_pending)
+        if self.picking:
+            self.play_btn.setEnabled(False)
         self.record_btn.setEnabled(not busy or self.recorder.active or self.record_pending)
         self.pause_btn.setEnabled(bool(getattr(self, "replay", None) and self.replay.running))
         self.stop_btn.setEnabled(busy)
@@ -873,7 +899,8 @@ class MainWindow(QMainWindow):
         self.record_pending = True
         self.navigate(0, 0)
         self.record_deadline = time.monotonic() + self.countdown.value()
-        self.record_btn.setText("Finish")
+        self.countdown_total = self.countdown.value()
+        self.record_btn.setText("Finish · F6")
         self.update_busy(True)
         self.record_timer.start()
         self.record_tick()
@@ -898,6 +925,7 @@ class MainWindow(QMainWindow):
         self.update_busy(True)
 
     def capture_tick(self):
+        self.update_countdown()
         if self.recorder.active:
             self.run_state.setText("●  RECORDING")
             self.status.setText(
@@ -931,6 +959,7 @@ class MainWindow(QMainWindow):
             else:
                 factory = UInputBackend
             self.playback_error = False
+            self.playback_started = False
             self.playback_stopped = False
             self.navigate(0, 1 if self.events_btn.isChecked() else 0)
             self.replay = Replay(factory, self.bridge.replay.emit)
@@ -941,9 +970,13 @@ class MainWindow(QMainWindow):
                     self.repeats.value(),
                     self.countdown.value(),
                     self.gap.value(),
+                    (self.start_x.value(), self.start_y.value())
+                    if self.start_enabled.isChecked()
+                    else None,
+                    self.start_settle.value() / 1000,
                 ),
             )
-            self.play_btn.setText("Stop")
+            self.play_btn.setText("Stop · F7")
             self.play_btn.setIcon(icon("stop", "#211b30"))
             self.progress.setValue(0)
             self.update_busy(True)
@@ -951,10 +984,16 @@ class MainWindow(QMainWindow):
             self.show_error(str(exc))
 
     def pause(self):
+        if not self.playback_started:
+            return
         if getattr(self, "replay", None) and self.replay.running:
             self.replay.pause()
 
     def stop(self):
+        self.pick_generation += 1
+        self.picking = False
+        self.pick_deadline = self.playback_deadline = None
+        self.countdown_banner.hide()
         if self.record_pending:
             self.record_pending = False
             self.record_timer.stop()
@@ -970,7 +1009,7 @@ class MainWindow(QMainWindow):
             self.status.setText(
                 f"Recording finished • {len(steps):,} steps • Undo restores previous steps"
             )
-        self.record_btn.setText("Record")
+        self.record_btn.setText("Record · F6")
         if getattr(self, "replay", None) and self.replay.running:
             self.playback_stopped = True
             self.replay.stop()
@@ -980,7 +1019,22 @@ class MainWindow(QMainWindow):
             self.autosave()
 
     def on_replay(self, event, value):
-        if event == "state":
+        if event == "countdown":
+            self.countdown_total = value
+            self.playback_deadline = time.monotonic() + value
+            self.pause_btn.hide()
+            self.update_countdown()
+        elif event == "waiting":
+            row, loop, duration = value
+            self.workflow.canvas.highlight(row)
+            self.workflow.update_footer()
+            self.model.highlight(row)
+            index = max(0, bisect_right(self.workflow.canvas.starts, row) - 1)
+            name = self.blocks[index].title
+            self.status.setText(
+                f"{'Preview' if self.test_mode.isChecked() else 'Playing'} · loop {loop} · {name} · {duration * 1000:.0f} ms"
+            )
+        elif event == "state":
             prefix = "Test mode · " if self.test_mode.isChecked() else ""
             self.status.setText(prefix + value)
             self.run_state.setText(
@@ -990,6 +1044,12 @@ class MainWindow(QMainWindow):
                 if self.test_mode.isChecked()
                 else "●  RUNNING"
             )
+            if value == "Playing" or value.startswith("Loop "):
+                self.playback_started = True
+                self.playback_deadline = None
+                self.countdown_banner.hide()
+                self.pause_btn.setVisible(True)
+            self.pause_btn.setText("Resume · F8" if value.startswith("Paused") else "Pause · F8")
         elif event == "progress":
             row, loop = value
             self.model.highlight(row)
@@ -1006,10 +1066,13 @@ class MainWindow(QMainWindow):
             self.playback_error = True
             self.show_error(value)
         elif event == "finished":
+            self.playback_started = False
+            self.playback_deadline = None
+            self.countdown_banner.hide()
             self.model.highlight(-1)
             self.workflow.canvas.highlight(-1)
             self.run_state.setText("●  READY")
-            self.play_btn.setText("Run")
+            self.play_btn.setText("Run · F7")
             self.play_btn.setIcon(icon("play", "#211b30"))
             self.update_busy(False)
             if not self.playback_error:
