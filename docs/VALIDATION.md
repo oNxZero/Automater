@@ -1,13 +1,18 @@
 # Verification of v0.4
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
-Python 3.14.8, Qt/PySide6 6.12.0, evdev 1.9.3, and python-xlib 0.33.
+Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **136 automated tests passed**, including offscreen Qt workflows and five live X11
+- **137 automated tests passed**, including offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
+- Reproduced a Qt/PySide6 6.12.0 reference-count crash during repeated painting on
+  Python 3.11. Constrained runtime to 6.11.2–6.11.x, pinned 6.11.2 in the lock file,
+  and verified the full suite on 3.11 and 3.14. The launcher checks pinned installed
+  versions and refreshes changed dependencies before starting the app.
+  A separate process draws 20,000 pixmaps and must exit cleanly as a regression check.
 - Replay tests cover long-delay cancellation, held-key release, partial-send failure,
   pause/resume, stop while paused, target loss, finite/unbounded repeats, disabled
   steps, speed settings, countdown cancellation and concurrent-start rejection.
