@@ -35,8 +35,10 @@ highlights steps without sending input. `--doctor` prints device/session
 diagnostics without opening the UI. If evdev needs to compile, install your
 distribution's Python development headers, compiler, and Linux input headers
 (Fedora: `python3-devel gcc kernel-headers`; Debian/Ubuntu: `python3-dev build-essential`).
-Qt may also need your distribution's XCB runtime libraries when using an X11 session
-(for example, `libxcb-cursor0` on Debian/Ubuntu). Qt's Wayland plugin is included.
+Qt also needs the system's EGL/OpenGL libraries, even for offscreen rendering.
+On a minimal Debian/Ubuntu installation, install `libegl1 libopengl0 libgl1
+libxkbcommon0 libxcb-cursor0`. Qt's Wayland plugin is included; X11 sessions also
+use the system's XCB libraries.
 
 ## What works in v0.1
 
