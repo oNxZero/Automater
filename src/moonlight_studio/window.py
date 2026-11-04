@@ -321,6 +321,7 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         self.inspector_panel.show()
         self.inspector_stack.setCurrentIndex(index)
         self.inspector_buttons[index].setChecked(True)
+        self.workflow.canvas.request_selection_visibility()
 
     def hide_inspector(self):
         self.inspector_panel.hide()

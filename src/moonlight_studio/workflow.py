@@ -4,7 +4,7 @@ import math
 from bisect import bisect_right
 from dataclasses import dataclass
 
-from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QVariantAnimation, Signal
+from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox,
@@ -377,6 +377,9 @@ class Canvas(QGraphicsView):
         self.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
         self.setDragMode(QGraphicsView.RubberBandDrag)
         self.pan_origin = None
+        self.pointer_interaction = False
+        self.reveal_requested = False
+        self.reveal_queued = False
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.setAccessibleName(
@@ -535,6 +538,38 @@ class Canvas(QGraphicsView):
                 {max(0, bisect_right(self.starts, row) - 1)}, emit=False, reveal=reveal
             )
 
+    def request_selection_visibility(self):
+        """Reveal after layout settles, without moving cards during a pointer gesture."""
+        self.reveal_requested = True
+        if not self.reveal_queued:
+            self.reveal_queued = True
+            QTimer.singleShot(0, self, self.reveal_selection)
+
+    def reveal_selection(self):
+        self.reveal_queued = False
+        if not self.reveal_requested or self.pointer_interaction or not self.isVisible():
+            return
+        self.reveal_requested = False
+        indices = sorted(self.selected_indices.intersection(self.nodes))
+        if not indices:
+            return
+        bounds = QRectF()
+        for index in indices:
+            bounds = bounds.united(self.nodes[index].sceneBoundingRect())
+        mapped = self.mapFromScene(bounds).boundingRect()
+        if (
+            mapped.width() + 48 > self.viewport().width()
+            or mapped.height() + 48 > self.viewport().height()
+        ):
+            target = self.anchor if self.anchor in indices else indices[0]
+            bounds = self.nodes[target].sceneBoundingRect()
+        self.ensureVisible(bounds, 24, 24)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.pan_origin is None:
+            self.request_selection_visibility()
+
     def highlight(self, row):
         index = max(0, bisect_right(self.starts, row) - 1) if row >= 0 and self.blocks else -1
         if index >= 0 and index // PAGE_SIZE != self.page:
@@ -575,7 +610,10 @@ class Canvas(QGraphicsView):
         self.zoomChanged.emit(round(scale * 100))
 
     def mousePressEvent(self, event):
+        if event.button() in (Qt.LeftButton, Qt.MiddleButton):
+            self.pointer_interaction = True
         if event.button() == Qt.MiddleButton:
+            self.reveal_requested = False
             self.pan_origin = event.position().toPoint()
             self.setCursor(Qt.ClosedHandCursor)
             event.accept()
@@ -604,9 +642,16 @@ class Canvas(QGraphicsView):
         if event.button() == Qt.MiddleButton:
             self.pan_origin = None
             self.unsetCursor()
+            self.pointer_interaction = False
+            if self.reveal_requested:
+                self.request_selection_visibility()
             event.accept()
             return
         super().mouseReleaseEvent(event)
+        if event.button() == Qt.LeftButton:
+            self.pointer_interaction = False
+            if self.reveal_requested:
+                self.request_selection_visibility()
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.ControlModifier:

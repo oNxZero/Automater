@@ -18,6 +18,7 @@ evidence, not a claim that every bug has been found.
 | Box selection required an obscure modifier | Left-drag selects; middle-drag pans, with Qt pointer-event tests. |
 | Clearing Events selection left stale properties | Clear cards/properties with the table; prevent partial raw rows from expanding into a bulk edit. |
 | Properties clipped in a small window | Scroll the complete inspector contents, keep Apply visible, remove duplicate controls and hide unused ranges. Visually checked at 1240×800 and 1000×680. |
+| Opening properties clipped the selected card at the canvas edge | Reveal the selection after panel/window resizing settles. Defer scrolling until mouse release to preserve dragging. Eight regression cases cover all layouts, both window widths, resizing and an active pointer gesture; zoom and events stay unchanged. |
 | Random timing estimates showed a single total minimum | Show a total range. |
 | Recorded cleanup released modifiers too early | Release other held keys before modifiers. |
 | F-keys did nothing locally without evdev access | Local fallback when monitoring is unavailable; no auto-repeat or duplicate global delivery. |

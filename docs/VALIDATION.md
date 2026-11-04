@@ -5,7 +5,7 @@ Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **160 automated tests passed**, including offscreen Qt workflows and five live X11
+- **168 automated tests passed**, including offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Reproduced a Qt/PySide6 6.12.0 reference-count crash during repeated painting on
@@ -66,6 +66,11 @@ Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
   remote run results; the local results above are independent of CI availability.
 
 ## v0.5 regression checks
+
+Inspector visibility tests reproduce cards being clipped when properties open in
+Horizontal, Vertical and Grid layouts at 1000 and 1240 pixel window widths. The
+fix reveals selected cards after layout changes without altering zoom or events,
+waits for mouse release during gestures, and handles resizing an open inspector.
 
 Batch editing checks partial field updates, differing keys/durations/ranges, atomic
 validation and single-step undo. Capture checks default append, legacy preference
