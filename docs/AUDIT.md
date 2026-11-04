@@ -1,4 +1,4 @@
-# Bug and usability audit — v0.5
+# Bug and usability audit — v0.6
 
 Reviewed selection/editing, recording, pointer setup, playback feedback, asynchronous
 cancellation and the Qt layout on 2026-11-04. This is a bounded audit with regression
@@ -43,3 +43,25 @@ evidence, not a claim that every bug has been found.
   replacement position.
 - Configurable hotkeys, named groups, run presets and a real-device compatibility
   report remain useful follow-ups before broader Linux/game reliability claims.
+
+
+## v0.6 findings and changes
+
+- Existing-window routing cannot guarantee a game accepts synthetic X11 messages,
+  and it cannot route to a native Wayland client. Added a separate-display session
+  option with private XTEST input; it requires launching the app there and compatible
+  Vulkan/GPU support. Sober itself still needs real-game validation.
+- Countdown display restarted from the time a GUI signal arrived. It now uses the
+  worker's actual deadline, including preparation/registration timing.
+- Upcoming input was highlighted while waiting for its delay. Feedback now separates
+  delay, Timer, held keys, positioning, settle, gap and actual completed events.
+- Finish/Stop cleared the only evidence of where a run ended. Last-loop completed,
+  last, interrupted and failed markers now persist per document with diagnostics.
+- Mouse X/Y axes from a physical report became separate replay reports. They now
+  stay together with report spacing and counts retained; different source devices
+  never merge. This improves fidelity but does not establish exact game-camera paths.
+- Added independent document undo/view/run settings and recovery files; new/open no
+  longer discards work, and saving cannot collide with another open file.
+- A host-pointer comparison in an X11 test could fail when the user physically moved
+  the mouse. It now forbids pointer-warp/XTEST APIs in background routing; separate
+  input tests use a test-owned Xvfb server.

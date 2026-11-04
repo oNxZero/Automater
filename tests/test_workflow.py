@@ -155,7 +155,7 @@ def test_event_selection_is_reflected_on_canvas(qtbot, tmp_path, monkeypatch):
     assert win.workflow.canvas.nodes[1].isSelected()
     win.navigate(0, 0)
     assert win.action_inspector.title.text() == "Timer"
-    win.undo.clear()
+    win.undo.activeStack().clear()
     clean(win)
 
 

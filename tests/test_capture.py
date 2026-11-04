@@ -45,8 +45,8 @@ def test_release_without_press_ignored_and_relative_motion_preserved():
     recorder.feed(event(ecodes.REL_X, -15, ecodes.EV_REL))
     recorder.feed(event(ecodes.REL_Y, 9, ecodes.EV_REL))
     steps = recorder.stop()
-    assert (steps[0].x, steps[0].y) == (-15, 0)
-    assert (steps[1].x, steps[1].y) == (0, 9)
+    assert (steps[0].x, steps[0].y) == (-15, 9)
+    assert [step.action for step in steps] == ["move", "wait"]
 
 
 def test_two_devices_share_one_logical_key_hold():

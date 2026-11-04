@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from .editor import editing_command
+from .run_feedback import block_state
 from .theme import COLORS, MUTED, TEXT, font, icon
 
 PAGE_SIZE = 60
@@ -131,6 +132,7 @@ class Node(QGraphicsObject):
         super().__init__()
         self.block, self.index, self.canvas = block, index, canvas
         self.playing = False
+        self.execution_state = ""
         self.setFlags(QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemIsFocusable)
         self.setAcceptHoverEvents(True)
         self.setCursor(Qt.PointingHandCursor)
@@ -149,7 +151,14 @@ class Node(QGraphicsObject):
 
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.Antialiasing)
-        color = QColor(COLORS[self.block.kind])
+        color = QColor(
+            {
+                "completed": "#75d6c0",
+                "last": "#83b8f2",
+                "stopped": "#e8c58a",
+                "failed": "#f2a3bc",
+            }.get(self.execution_state, COLORS[self.block.kind])
+        )
         rect = QRectF(0, 0, CARD_WIDTH, CARD_HEIGHT)
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(5, 7, 15, 70))
@@ -159,7 +168,7 @@ class Node(QGraphicsObject):
         gradient.setColorAt(1, QColor("#1c2030"))
         border = (
             color
-            if self.isSelected() or self.playing
+            if self.isSelected() or self.playing or self.execution_state
             else QColor("#55566f" if self.hovered else "#353b50")
         )
         painter.setPen(QPen(border, 2 if self.isSelected() or self.playing else 1))
@@ -189,7 +198,7 @@ class Node(QGraphicsObject):
         painter.drawText(
             QRectF(58, 17, 126, 28),
             Qt.AlignVCenter | Qt.AlignRight,
-            f"{self.index + 1:02d}  ·  {'SKIPPED' if not self.block.enabled else self.block.kind.upper()}",
+            f"{self.index + 1:02d}  ·  {self.execution_state.upper() if self.execution_state else 'SKIPPED' if not self.block.enabled else self.block.kind.upper()}",
         )
         painter.setFont(font(11, True))
         painter.setPen(QColor(TEXT))
@@ -391,6 +400,8 @@ class Canvas(QGraphicsView):
         self.page = 0
         self.layout_mode = "horizontal"
         self.start_label = "START"
+        self.execution_states = {}
+        self.execution_trace = None
         self.scene().selectionChanged.connect(self.selection_changed)
 
     def drawBackground(self, painter, rect):
@@ -438,6 +449,8 @@ class Canvas(QGraphicsView):
             node = Node(block, index, self)
             node.setPos(self.node_position(index))
             node.setSelected(index in self.selected_indices)
+            node.execution_state = self.execution_states.get(index, "")
+            node.playing = node.execution_state == "running"
             self.scene().addItem(node)
             self.nodes[index] = node
         first = self.node_position(start)
@@ -510,6 +523,9 @@ class Canvas(QGraphicsView):
         self.scene().setSceneRect(self.scene().itemsBoundingRect().adjusted(-30, -25, 45, 60))
         self.scene().blockSignals(False)
 
+        if self.execution_trace is not None:
+            self.set_execution_trace(self.execution_trace, reveal=False)
+
     def choose_indices(self, indices, emit=True, reveal=False):
         self.selected_indices = {i for i in indices if 0 <= i < len(self.blocks)}
         if reveal and self.selected_indices:
@@ -581,6 +597,60 @@ class Canvas(QGraphicsView):
                 node.update()
         if index in self.nodes:
             self.ensureVisible(self.nodes[index], 40, 40)
+
+    def set_execution(self, states):
+        self.execution_trace = None
+        self.execution_states = dict(states)
+        active = [i for i, state in states.items() if state == "running"]
+        last = [i for i, state in states.items() if state in ("last", "stopped", "failed")]
+        target = min(active) if active else min(last) if last else None
+        if target is not None and target // PAGE_SIZE != self.page:
+            self.page = target // PAGE_SIZE
+            self.render_page()
+        for index, node in self.nodes.items():
+            state = states.get(index, "")
+            if state != node.execution_state:
+                node.execution_state = state
+                node.playing = state == "running"
+                node.update()
+        if target in self.nodes:
+            self.ensureVisible(self.nodes[target], 24, 24)
+
+    def set_execution_trace(self, trace, reveal=True):
+        self.execution_trace = trace
+        row = trace["active_row"]
+        if trace["phase"] == "finished":
+            row = trace["failed_row"] if trace["failed_row"] >= 0 else trace["last_activity_row"]
+        elif trace["phase"] not in ("paused", "countdown", "positioning", "settling", "loop_gap"):
+            if row < 0:
+                previous = trace["last_sent_row"]
+                candidate = (
+                    max(0, bisect_right(self.starts, previous) - 1)
+                    if previous >= 0 and self.blocks
+                    else -1
+                )
+                if (
+                    candidate >= 0
+                    and self.blocks[candidate].kind in ("move", "scroll")
+                    and block_state(self.blocks[candidate], trace) == "running"
+                ):
+                    row = previous
+                elif trace.get("held_rows"):
+                    row = max(trace["held_rows"])
+        else:
+            row = -1
+        target = max(0, bisect_right(self.starts, row) - 1) if row >= 0 and self.blocks else None
+        if reveal and target is not None and target // PAGE_SIZE != self.page:
+            self.page = target // PAGE_SIZE
+            self.render_page()
+        for index, node in self.nodes.items():
+            state = block_state(node.block, trace)
+            if state != node.execution_state:
+                node.execution_state = state
+                node.playing = state == "running"
+                node.update()
+        if reveal and target in self.nodes:
+            self.ensureVisible(self.nodes[target], 24, 24)
 
     def zoom(self, factor):
         current = self.transform().m11()
@@ -697,6 +767,12 @@ class Workflow(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.canvas = Canvas()
+        self.run_summary = QLabel("")
+        self.run_summary.setObjectName("muted")
+        self.run_summary.setWordWrap(True)
+        self.run_summary.setContentsMargins(12, 8, 12, 0)
+        self.run_summary.hide()
+        layout.addWidget(self.run_summary)
         self.selection_bar = QWidget()
         selection = QHBoxLayout(self.selection_bar)
         selection.setContentsMargins(10, 5, 10, 5)

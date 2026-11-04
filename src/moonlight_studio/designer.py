@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFormLayout,
     QFrame,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QSplitter,
     QStackedWidget,
+    QTabBar,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -116,6 +118,8 @@ def build_ui(w):
         ("Randomize selected timing…", "randomize"),
         ("Re-record selected actions…", "rerecord"),
         ("Show pointer path…", "preview_pointer"),
+        ("Last playback details", "run_details"),
+        ("Clear run highlights", "clear_run"),
         ("Keyboard shortcuts\tF1", "help"),
     ):
         action = edit_menu.addAction(title)
@@ -127,6 +131,20 @@ def build_ui(w):
     w.save_btn = button("Save", w.save_script, "", "Save workflow · Ctrl+S", "save")
     top.addWidget(w.save_btn)
     body.addLayout(top)
+    tabs = QHBoxLayout()
+    w.document_tabs = QTabBar()
+    w.document_tabs.setTabsClosable(True)
+    w.document_tabs.setMovable(True)
+    w.document_tabs.setExpanding(False)
+    w.document_tabs.setDrawBase(False)
+    w.document_tabs.setUsesScrollButtons(True)
+    w.document_tabs.setAccessibleName("Open workflows")
+    w.document_tabs.currentChanged.connect(w.activate_document)
+    w.document_tabs.tabCloseRequested.connect(w.close_document)
+    tabs.addWidget(w.document_tabs, 1)
+    w.new_tab_btn = button("", w.new_script, "ghost", "New workflow tab · Ctrl+T", "plus")
+    tabs.addWidget(w.new_tab_btn)
+    body.addLayout(tabs)
     w.workspace_header = QWidget()
     w.title_row = QHBoxLayout(w.workspace_header)
     w.title_row.setContentsMargins(0, 8, 0, 4)
@@ -366,7 +384,9 @@ def build_run_settings(w):
     layout.addWidget(label("Preview without sending any input."))
     layout.addWidget(label("Destination"))
     w.mode = QComboBox()
-    w.mode.addItems(["Active desktop", "Background window · X11"])
+    w.mode.addItems(
+        ["Active desktop", "Existing window · X11", "Separate game session · Gamescope"]
+    )
     w.mode.currentIndexChanged.connect(w.routing_changed)
     layout.addWidget(w.mode)
     w.target = QComboBox()
@@ -379,6 +399,54 @@ def build_run_settings(w):
     layout.addWidget(w.refresh_target_btn)
     w.routing_hint = label("")
     layout.addWidget(w.routing_hint)
+    w.session_controls = QWidget()
+    compact_session = QVBoxLayout(w.session_controls)
+    compact_session.setContentsMargins(0, 0, 0, 0)
+    w.session_status = label("Not launched. Set up a separate display for your game.")
+    compact_session.addWidget(w.session_status)
+    w.session_dialog = QDialog(w)
+    w.session_dialog.setWindowTitle("Separate game session")
+    w.session_dialog.setMinimumWidth(460)
+    session = QVBoxLayout(w.session_dialog)
+    session.setContentsMargins(24, 24, 24, 24)
+    session.setSpacing(14)
+    session.addWidget(label("Separate game session", "heading"))
+    session.addWidget(
+        label(
+            "Launch your game with its own virtual mouse and keyboard. Close an existing Sober instance first. Closing Studio leaves the game open."
+        )
+    )
+    compact_session.addWidget(
+        button("Set up game session…", lambda: w.session_dialog.show(), glyph="target")
+    )
+    w.session_app = QComboBox()
+    w.session_app.addItems(["Sober · Flatpak", "Custom application"])
+    session.addWidget(w.session_app)
+    w.session_command = QLineEdit()
+    w.session_command.setPlaceholderText("/path/to/game --option")
+    w.session_command.setAccessibleName("Custom game command; no shell expansion")
+    w.session_command.hide()
+    w.session_app.currentIndexChanged.connect(lambda i: w.session_command.setVisible(i == 1))
+    session.addWidget(w.session_command)
+    w.session_size = QComboBox()
+    for width, height in ((1280, 720), (1920, 1080), (2560, 1440)):
+        w.session_size.addItem(f"{width} × {height}", (width, height))
+    session.addWidget(w.session_size)
+    w.launch_session_btn = button("Launch game in session", w.launch_game_session, glyph="play")
+    session.addWidget(w.launch_session_btn)
+    w.session_dialog_status = label(
+        "Choose an application and launch it, then select its window in Run settings."
+    )
+    session.addWidget(w.session_dialog_status)
+    session.addWidget(
+        button("Session diagnostics", w.show_session_diagnostics, "ghost", glyph="info")
+    )
+    w.close_session_btn = button("Close game session", w.close_game_session, "ghost", glyph="close")
+    w.close_session_btn.setEnabled(False)
+    session.addWidget(w.close_session_btn)
+    session.addWidget(button("Done", w.session_dialog.hide, "primary", glyph="check"))
+    w.session_controls.hide()
+    layout.insertWidget(layout.indexOf(w.target), w.session_controls)
     form = QFormLayout()
     form.setSpacing(12)
     form.setRowWrapPolicy(QFormLayout.WrapLongRows)

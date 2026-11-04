@@ -94,11 +94,13 @@ def test_background_requires_explicit_target(qtbot, tmp_path, monkeypatch):
     clean(win)
 
 
-def test_unsaved_cancel_prevents_new_script(qtbot, tmp_path, monkeypatch):
+def test_new_script_preserves_unsaved_work_in_another_tab(qtbot, tmp_path, monkeypatch):
     win = window(qtbot, tmp_path, monkeypatch)
     win.model.commit([Step(42)], "Edit")
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Cancel)
     win.new_script()
+    assert win.model.steps == [] and win.document_tabs.count() == 2
+    win.document_tabs.setCurrentIndex(0)
     assert win.model.steps == [Step(42)]
     clean(win)
 

@@ -10,7 +10,7 @@ Record your keyboard and mouse. Shape the sequence visually. Run it your way.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Studio-v0.5-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Studio-v0.6-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 
 A native Python desktop app inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
@@ -34,6 +34,30 @@ Your original input samples and timings stay available in the **Events** view.
 | Connected keyboard, mouse, wait and path cards | Speed, repeats, start delay and loop gap | JSON import and export |
 | Click a card to edit its properties | Pause, resume and F12 emergency stop | Atomic saves and autosave recovery |
 | Insert between cards; duplicate or reorder | Watch the active action during replay | Undo / redo up to 50 event edits |
+
+## New in v0.6: separate game sessions, tabs and run results
+
+- **Independent game input:** Settings → Run → Separate game session starts Sober
+  or a custom application inside Gamescope. Playback uses that display's mouse and
+  keyboard, leaving your normal desktop input independent. Close an existing Sober
+  instance first; it cannot be moved into the new display. GPU/game compatibility
+  still requires testing. See [the setup guide](docs/ISOLATED_SESSIONS.md).
+- **Workflow tabs:** open multiple scripts, each with its own changes, undo/redo,
+  view, run settings and recovery file. New/open keeps existing work. Ctrl+T opens
+  a tab, Ctrl+W closes it, and Ctrl+Tab switches. Tabs lock during capture/playback.
+- **Worker-clock feedback:** countdown uses the actual replay deadline. The UI
+  distinguishes delay, timer, held input, reset, settle, pause and loop gap; it no
+  longer labels an upcoming input as already running. GUI polling is 30 Hz and
+  action rendering remains bounded to the current page.
+- **Keep the last run:** completed actions remain green; the last completed action
+  is blue, an interrupted action amber and a failed step red. Marks belong to the
+  workflow tab and clear on edits/new playback. Edit → Last playback details shows
+  completed events, failure and measured scheduler lateness.
+- **Mouse report fidelity:** X/Y from one physical report replay together instead
+  of separate synthetic reports. Counts and frame spacing are retained. Exact
+  screen/camera paths still depend on acceleration, sensitivity and game state.
+
+![Completed and interrupted actions after Stop](docs/run-results.png)
 
 ## New in v0.5: edit together, record safely
 
@@ -185,7 +209,7 @@ physical input access separately.
 | **Library** | Search saved workflows, double-click to open, or import a JSON script. |
 | **Devices** | Check input access, select physical devices, choose capture categories and find permissions help. |
 | **Action inspector** | Edit the selected action, apply changes, duplicate, delete or move it. |
-| **Run inspector** | Choose destination, speed, repeats, countdown, loop gap and Test mode. See estimated duration. |
+| **Run inspector** | Choose desktop, an existing X11 window, or a separate game session; speed, repeats, loop gap and Test mode. |
 | **Start inspector** | Configure the initial countdown and the per-loop cursor reset. |
 | **Notes inspector** | Remember game bindings, starting position and camera direction. |
 
@@ -216,7 +240,8 @@ recovery and common questions.
 | **F7** | Start / stop playback |
 | **F8** | Pause / resume playback |
 | **F12** | Stop recording, countdown, or playback |
-| Ctrl+N / Ctrl+O / Ctrl+S | New / import / save |
+| Ctrl+N or Ctrl+T / Ctrl+O / Ctrl+S | New tab / open in a tab / save active tab |
+| Ctrl+W / Ctrl+Tab / Ctrl+Shift+Tab | Close tab / next tab / previous tab |
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo event edits |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste selected actions |

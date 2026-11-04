@@ -364,6 +364,10 @@ class EditingMixin:
                 self.rerecord_selection()
             elif command == "preview_pointer":
                 self.preview_pointer()
+            elif command == "run_details":
+                self.show_run_details()
+            elif command == "clear_run":
+                self.clear_run_feedback()
             elif command in ("toggle", "split", "fixed_timing", "randomize"):
                 rows = self.selected_rows()
                 if not rows:

@@ -43,6 +43,13 @@ def identity(connection, window):
     )
 
 
+def window_title(connection, window):
+    name = window.get_full_property(
+        connection.intern_atom("_NET_WM_NAME"), connection.intern_atom("UTF8_STRING")
+    )
+    return name.value.decode("utf-8", "replace") if name is not None else window.get_wm_name()
+
+
 def windows():
     connection = display.Display()
     try:
@@ -55,14 +62,7 @@ def windows():
         for wid in candidates:
             try:
                 window = connection.create_resource_object("window", int(wid))
-                name = window.get_full_property(
-                    connection.intern_atom("_NET_WM_NAME"), connection.intern_atom("UTF8_STRING")
-                )
-                title = (
-                    name.value.decode("utf-8", "replace")
-                    if name is not None
-                    else window.get_wm_name()
-                )
+                title = window_title(connection, window)
                 if title:
                     pid, wm_class = identity(connection, window)
                     result.append(WindowInfo(int(wid), title, pid, wm_class))

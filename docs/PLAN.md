@@ -220,3 +220,21 @@ animations and rounded Grid connector corners.
 The [audit](AUDIT.md) records verified fixes and remaining manual checks. Native
 Wayland background routing, conditional execution and image matching remain future
 work; portal pointer control is an optional desktop-positioning adapter.
+
+
+## v0.6: input isolation, workflow tabs and execution feedback
+
+Implemented a managed Gamescope launcher for Sober/custom executables; private local
+input RPC and XTEST limited to the nested display; preflight, window identity,
+client-coordinate reset and releases on disconnect; separate session setup dialog,
+logs and lifecycle controls. Native Wayland host input is never used as a fallback.
+
+Added workflow documents with independent undo stacks, view/run state and private
+recovery files. New/open keeps old documents; close/save checks prevent accidental
+loss and file collisions. Capture/playback locks document switching.
+
+Playback now publishes an authoritative clock/phase snapshot. The UI polls current
+state, highlights actual timers/holds/completed actions, retains last-loop results
+per document and reports scheduler lateness. Mouse X/Y reports are kept together.
+Future work includes calibration/image feedback and real Sober/GPU compatibility
+validation. The private Xvfb test proves transport behavior, not game acceptance.

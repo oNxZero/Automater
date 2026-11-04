@@ -46,6 +46,7 @@ class StepModel(QAbstractTableModel):
         self.steps = []
         self.undo = undo
         self.playing_row = -1
+        self.execution_trace = None
 
     def replace(self, steps):
         self.beginResetModel()
@@ -83,6 +84,15 @@ class StepModel(QAbstractTableModel):
             return round(value, 3) if isinstance(value, float) else value
         if role == Qt.BackgroundRole and index.row() == self.playing_row:
             return QColor("#364463")
+        if role == Qt.BackgroundRole and self.execution_trace:
+            trace = self.execution_trace
+            if trace["phase"] == "finished":
+                if index.row() == trace["failed_row"]:
+                    return QColor("#593245")
+                if index.row() == trace["last_activity_row"]:
+                    return QColor("#2b4059" if index.row() <= trace["completed_row"] else "#54452d")
+            if step.enabled and index.row() <= trace["completed_row"]:
+                return QColor("#243e39")
         if role == Qt.ForegroundRole and not step.enabled:
             return QColor("#7d859f")
 
@@ -117,6 +127,32 @@ class StepModel(QAbstractTableModel):
         for value in (old, row):
             if 0 <= value < len(self.steps):
                 self.dataChanged.emit(self.index(value, 0), self.index(value, len(FIELDS) - 1))
+
+    def set_execution(self, trace):
+        previous = self.execution_trace
+        self.execution_trace = dict(trace)
+        if not self.steps:
+            return
+        old = previous["completed_row"] if previous else -1
+        new = trace["completed_row"]
+        if not previous or new < old or trace["phase"] == "finished":
+            first, end = 0, max(old, new, trace["last_activity_row"], trace["failed_row"])
+        else:
+            first, end = min(old, new), max(old, new)
+        first, end = max(0, first), min(len(self.steps) - 1, end)
+        if end >= first:
+            self.dataChanged.emit(
+                self.index(first, 0), self.index(end, len(FIELDS) - 1), [Qt.BackgroundRole]
+            )
+
+    def clear_execution(self):
+        self.execution_trace = None
+        if self.steps:
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(len(self.steps) - 1, len(FIELDS) - 1),
+                [Qt.BackgroundRole],
+            )
 
 
 class StepDelegate(QStyledItemDelegate):

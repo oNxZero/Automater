@@ -102,15 +102,19 @@ def test_preflight_rejects_unsupported_steps(receiver):
         backend.prepare([Step(0, "scroll", y=101)])
 
 
-def test_background_loop_start_uses_client_coords_without_moving_pointer(receiver):
+def test_background_loop_start_uses_client_coords_without_moving_pointer(receiver, monkeypatch):
     connection, window, backend = receiver
-    root = connection.screen().root
-    before = root.query_pointer()
+    from Xlib.ext import xtest
+    from Xlib.xobject.drawable import Window
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Background routing must not move the desktop pointer")
+
+    monkeypatch.setattr(Window, "warp_pointer", forbidden)
+    monkeypatch.setattr(xtest, "fake_input", forbidden)
     backend.begin_cycle((25, 30))
     events = received(connection)
     assert events[-1].type == X.MotionNotify
     assert (events[-1].event_x, events[-1].event_y) == (25, 30)
-    after = root.query_pointer()
-    assert (before.root_x, before.root_y) == (after.root_x, after.root_y)
     with pytest.raises(ValueError):
         backend.prepare_start((200, 30))

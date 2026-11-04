@@ -7,7 +7,7 @@ import select
 import struct
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from evdev import InputDevice, UInput, ecodes, list_devices
@@ -116,6 +116,7 @@ class Recorder:
         self._lock = threading.Lock()
         self.active = False
         self.steps = []
+        self._pending = None
         self.held = set()
         self.keyboard = self.mouse = self.motion = True
 
@@ -126,6 +127,7 @@ class Recorder:
             self._limit = limit
             self.steps, self.held = [], set()
             self._sources = set()
+            self._pending = None
             self.keyboard, self.mouse, self.motion = keyboard, mouse, motion
             self._last = time.monotonic()
             self._started = self._last
@@ -139,6 +141,23 @@ class Recorder:
             # Discard events that were queued before recording started.
             if now < self._started:
                 return
+            now = max(self._last, now)
+            if event.type == ecodes.EV_SYN:
+                if event.code == ecodes.SYN_REPORT:
+                    self._flush_motion()
+                return
+            motion_action = (
+                "move"
+                if event.type == ecodes.EV_REL and event.code in (ecodes.REL_X, ecodes.REL_Y)
+                else "scroll"
+                if event.type == ecodes.EV_REL
+                and event.code in (ecodes.REL_WHEEL, ecodes.REL_HWHEEL)
+                else None
+            )
+            if self._pending and (
+                motion_action != self._pending[0].action or source != self._pending[2]
+            ):
+                self._flush_motion()
             now = max(self._last, now)
             delay = min((now - self._last) * 1000, 3_600_000)
             step = None
@@ -179,15 +198,42 @@ class Recorder:
                         y=event.value if event.code == ecodes.REL_WHEEL else 0,
                     )
             if step:
+                if step.action in ("move", "scroll"):
+                    if not self._pending and len(self.steps) >= self._limit - len(KEY_CODES) - 1:
+                        raise RuntimeError("Recording limit reached; recording has been stopped")
+                    if self._pending:
+                        previous, stamp, origin = self._pending
+                        try:
+                            self._pending = (
+                                replace(previous, x=previous.x + step.x, y=previous.y + step.y),
+                                stamp,
+                                origin,
+                            )
+                            return
+                        except ValueError:
+                            self._flush_motion()
+                            step = replace(step, delay_ms=max(0, (now - self._last) * 1000))
+                    self._pending = (step, now, source)
+                    return
                 # Keep room for final releases and a trailing wait.
-                if len(self.steps) >= self._limit - len(KEY_CODES) - 1:
-                    raise RuntimeError("Recording limit reached; recording has been stopped")
-                self.steps.append(step)
-                self._last = now
+                self._append(step, now)
+
+    def _append(self, step, stamp):
+        if len(self.steps) >= self._limit - len(KEY_CODES) - 1:
+            raise RuntimeError("Recording limit reached; recording has been stopped")
+        self.steps.append(step)
+        self._last = stamp
+
+    def _flush_motion(self):
+        if self._pending:
+            step, stamp, _ = self._pending
+            self._pending = None
+            self._append(step, stamp)
 
     def stop(self):
         with self._lock:
             if self.active:
+                self._flush_motion()
                 delay = max(0, min((time.monotonic() - self._last) * 1000, 3_600_000))
                 self.steps.append(Step(delay, "wait"))
                 self.steps.extend(
@@ -200,7 +246,7 @@ class Recorder:
 
     def count(self):
         with self._lock:
-            return len(self.steps)
+            return len(self.steps) + (1 if self._pending is not None else 0)
 
 
 class DeviceMonitor:

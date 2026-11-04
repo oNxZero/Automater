@@ -53,6 +53,20 @@ class Replay:
         self._stop = False
         self._paused = False
         self._thread = None
+        self._timeline_lock = threading.Lock()
+        self._timeline = None
+
+    @property
+    def timeline(self):
+        with self._timeline_lock:
+            return dict(self._timeline) if self._timeline is not None else None
+
+    def _publish(self, phase=None, **values):
+        with self._timeline_lock:
+            if phase is not None:
+                values.update(phase=phase)
+                values.setdefault("phase_started", time.monotonic())
+            self._timeline.update(values)
 
     @property
     def running(self):
@@ -80,6 +94,28 @@ class Replay:
         if not any(s.enabled for s in snapshot.steps):
             raise ValueError("Add or enable at least one step first")
         self._stop = self._paused = False
+        self._timeline = {
+            "phase": "preparing",
+            "phase_started": time.monotonic(),
+            "deadline": None,
+            "active_row": -1,
+            "last_sent_row": -1,
+            "completed_row": -1,
+            "last_activity_row": -1,
+            "held_rows": (),
+            "completed_events": 0,
+            "enabled_events": sum(s.enabled for s in snapshot.steps),
+            "loop": 0,
+            "loop_elapsed": 0.0,
+            "loop_duration": 0.0,
+            "wait_duration": 0.0,
+            "loop_started": None,
+            "paused_seconds": 0.0,
+            "max_lateness_ms": 0.0,
+            "error": "",
+            "failed_row": -1,
+            "outcome": "running",
+        }
         self._thread = threading.Thread(target=self._run, args=(snapshot, options), daemon=True)
         self._thread.start()
 
@@ -103,17 +139,33 @@ class Replay:
             while not self._stop:
                 if self._paused:
                     started = time.monotonic()
+                    before_pause = self.timeline
                     self._release(backend, held)
+                    partial = max(
+                        0,
+                        min(
+                            before_pause.get("wait_duration", 0),
+                            before_pause.get("wait_duration", 0) - max(0, deadline - started),
+                        ),
+                    )
+                    self._publish("paused", deadline=None, paused_wait_elapsed=partial)
                     self.notify("state", "Paused • held inputs released")
                     while self._paused and not self._stop:
                         self._condition.wait(0.05)
-                    deadline += time.monotonic() - started
+                    paused_for = time.monotonic() - started
+                    deadline += paused_for
+                    self._publish(paused_seconds=self.timeline["paused_seconds"] + paused_for)
                     if self._stop:
                         return None
                     backend.check()
                     for code in sorted(held, key=lambda code: (code not in MODIFIER_KEYS, code)):
                         backend.send(Step(0, "key_down", code))
                     self.notify("state", "Playing")
+                    self._publish(
+                        before_pause["phase"],
+                        deadline=deadline,
+                        phase_started=before_pause["phase_started"] + paused_for,
+                    )
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return deadline
@@ -133,7 +185,7 @@ class Replay:
             raise RuntimeError("Could not release inputs: " + "; ".join(failures))
 
     def _run(self, script, options):
-        backend, held = None, set()
+        backend, held, held_rows = None, set(), {}
         try:
             backend = self.backend_factory()
             if hasattr(backend, "prepare"):
@@ -149,8 +201,11 @@ class Replay:
             lead_in = max(options.countdown, getattr(backend, "startup_delay", 0))
             self.notify("state", f"Starting in {lead_in:g}s…")
             # Targets need only be focused when the countdown finishes.
-            self.notify("countdown", lead_in)
-            deadline = self._wait(time.monotonic() + lead_in, _NoCheck(), held)
+            countdown_start = time.monotonic()
+            countdown_end = countdown_start + lead_in
+            self._publish("countdown", deadline=countdown_end, wait_duration=lead_in)
+            self.notify("countdown", {"duration": lead_in, "deadline": countdown_end})
+            deadline = self._wait(countdown_end, _NoCheck(), held)
             if deadline is None:
                 return
             backend.check()
@@ -158,8 +213,36 @@ class Replay:
             loop = 0
             last_progress = 0.0
             last_wait_report = 0.0
+            failed_row = -1
             while not self._stop and (options.repeats == 0 or loop < options.repeats):
                 loop += 1
+                scheduled = []
+                for index, step in enumerate(script.steps):
+                    if index % 512 == 0 and self._stop:
+                        return
+                    if step.enabled:
+                        scheduled.append(
+                            (index, step, step.sample_delay(self.rng) / 1000 / options.speed)
+                        )
+                total = sum(duration for _, _, duration in scheduled)
+                elapsed, completed = 0.0, 0
+                self._publish(
+                    "positioning" if options.start_position is not None else "running",
+                    loop=loop,
+                    active_row=-1,
+                    last_sent_row=-1,
+                    last_activity_row=-1,
+                    held_rows=(),
+                    completed_row=-1,
+                    completed_events=0,
+                    loop_elapsed=0.0,
+                    loop_duration=total,
+                    loop_started=None,
+                    loop_finished_at=None,
+                    paused_seconds=0.0,
+                    deadline=None,
+                    wait_duration=0.0,
+                )
                 self.notify("cycle", loop)
                 if options.start_position is not None:
                     if self._stop:
@@ -169,13 +252,28 @@ class Replay:
                         "state",
                         f"Loop {loop} · starting at {options.start_position[0]}, {options.start_position[1]}",
                     )
-                    deadline = self._wait(time.monotonic() + options.start_settle, backend, held)
+                    settle_end = time.monotonic() + options.start_settle
+                    self._publish(
+                        "settling", deadline=settle_end, wait_duration=options.start_settle
+                    )
+                    deadline = self._wait(settle_end, backend, held)
                     if deadline is None:
                         return
-                for index, step in enumerate(script.steps):
-                    if not step.enabled:
-                        continue
-                    duration = step.sample_delay(self.rng) / 1000 / options.speed
+                for index, step, duration in scheduled:
+                    if completed == 0:
+                        self._publish(loop_started=time.monotonic(), paused_seconds=0.0)
+                    deadline += duration
+                    activity = {"last_activity_row": index} if step.action == "wait" else {}
+                    self._publish(
+                        "timer" if step.action == "wait" else "delay",
+                        active_row=index if step.action == "wait" else -1,
+                        next_row=index,
+                        deadline=deadline,
+                        wait_duration=duration,
+                        loop_elapsed=elapsed,
+                    )
+                    if activity:
+                        self._publish(**activity)
                     now = time.monotonic()
                     if (
                         duration >= 0.05
@@ -184,15 +282,39 @@ class Replay:
                     ):
                         self.notify("waiting", (index, loop, duration))
                         last_wait_report = now
-                    deadline = self._wait(deadline + duration, backend, held)
+                    deadline = self._wait(deadline, backend, held)
                     if deadline is None:
                         return
                     backend.check()
+                    failed_row = index
+                    sent_at = time.monotonic()
+                    lateness = max(0.0, (sent_at - deadline) * 1000)
                     if step.action == "key_down":
                         held.add(step.code)  # Track before send, including partially failed sends.
+                        held_rows[step.code] = index
                     backend.send(step)
+                    # Honor delays from actual dispatch; do not burst overdue events
+                    # together after a slow send, pause or stalled destination.
+                    deadline = max(deadline, sent_at)
                     if step.action == "key_up":
                         held.discard(step.code)
+                        held_rows.pop(step.code, None)
+                    elapsed += duration
+                    completed += 1
+                    self._publish(
+                        "action",
+                        active_row=index,
+                        last_sent_row=index,
+                        last_activity_row=index,
+                        held_rows=tuple(held_rows.values()),
+                        completed_row=index,
+                        completed_events=completed,
+                        loop_elapsed=elapsed,
+                        deadline=None,
+                        wait_duration=0.0,
+                        max_lateness_ms=max(lateness, self.timeline["max_lateness_ms"]),
+                    )
+                    failed_row = -1
                     # High polling-rate mice and zero-delay scripts must not flood Qt.
                     now = time.monotonic()
                     if now - last_progress >= 1 / 30 or index == len(script.steps) - 1:
@@ -200,23 +322,72 @@ class Replay:
                         last_progress = now
                 self._release(backend, held)
                 held.clear()
+                held_rows.clear()
+                self._publish(loop_finished_at=time.monotonic())
                 if options.repeats == 0 or loop < options.repeats:
                     # Enforce a minimum gap so an empty loop cannot spin the CPU.
-                    deadline = self._wait(deadline + max(options.loop_gap, 0.01), backend, held)
+                    gap = max(options.loop_gap, 0.01)
+                    gap_end = time.monotonic() + gap
+                    self._publish("loop_gap", active_row=-1, deadline=gap_end, wait_duration=gap)
+                    deadline = self._wait(gap_end, backend, held)
                     if deadline is None:
                         return
         except Exception as exc:
+            current = self.timeline
+            error_row = locals().get("failed_row", -1)
+            if error_row < 0:
+                error_row = current["active_row"]
+                if error_row < 0 and current["phase"] in ("delay", "timer"):
+                    error_row = current.get("next_row", -1)
+            self._publish(
+                error=str(exc),
+                failed_row=error_row,
+            )
             self.notify("error", str(exc))
         finally:
             if backend is not None:
                 try:
                     self._release(backend, held)
                 except Exception as exc:
+                    self._publish(error=str(exc))
                     self.notify("error", str(exc))
                 try:
                     backend.close()
                 except Exception as exc:
+                    self._publish(error=str(exc))
                     self.notify("error", str(exc))
+            current = self.timeline
+            partial = (
+                current.get("paused_wait_elapsed", 0)
+                if current["phase"] == "paused"
+                else (
+                    max(
+                        0,
+                        min(
+                            current["wait_duration"],
+                            current["wait_duration"]
+                            - max(0, current["deadline"] - time.monotonic()),
+                        ),
+                    )
+                    if current["phase"] in ("delay", "timer")
+                    and current.get("deadline") is not None
+                    else 0.0
+                )
+            )
+            self._publish(
+                "finished",
+                deadline=None,
+                partial_wait_seconds=partial,
+                actual_loop_seconds=max(
+                    0,
+                    (current.get("loop_finished_at") or time.monotonic())
+                    - current["loop_started"]
+                    - current["paused_seconds"],
+                )
+                if current.get("loop_started") is not None
+                else 0.0,
+                outcome="failed" if current["error"] else "stopped" if self._stop else "finished",
+            )
             self.notify("finished", None)
 
 

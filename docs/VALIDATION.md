@@ -1,11 +1,11 @@
-# Verification of v0.5
+# Verification of v0.6
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
 Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **168 automated tests passed**, including offscreen Qt workflows and five live X11
+- **194 automated tests passed**, including offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Reproduced a Qt/PySide6 6.12.0 reference-count crash during repeated painting on
@@ -122,9 +122,34 @@ manual checks remain unverified:
    background coordinates separately in the intended X11 application.
 
 Native Wayland background routing, gamepad/absolute input, Windows/macOS, process
-watchdogs, and packaged installers are roadmap work, not verified v0.5 features.
+watchdogs, and packaged installers are roadmap work, not verified v0.6 features.
 
 7. On KDE and GNOME portal backends, approve the intended monitors, deny/cancel,
    revoke permission during a loop, change monitor layout/scale, reconnect, and
    verify that reset really reaches the point. Test overlay positioning and
    click-through behavior, especially with fractional scaling and fullscreen games.
+
+
+## v0.6 checks and specific limits
+
+Twenty-six additional tests cover document switching/undo, close/cancel, duplicate
+file activation, per-tab recovery, save collisions and playback locks; authoritative
+countdown deadlines, waiting/held/timer phases, retained failure/completion markers,
+recorded XY reports, source separation and measured slow-destination lateness.
+
+Four input integration cases start a separate Xvfb server on an automatically chosen
+display. They run the actual private RPC/XTEST service, checking real key/button/
+motion events, pointer position, client coordinates, identity, authentication and
+held-key cleanup. No XTEST input is sent to the host server. Launcher tests check
+argument boundaries, private directory permissions, explicit startup, Sober's
+existing-instance rejection and absence of desktop fallback. GUI routing tests
+ensure existing host-window targets do not carry into separate-session mode.
+
+Gamescope's actual headless launch was attempted with a harmless test receiver.
+It failed before starting a game because this environment has no accessible Vulkan
+physical device. The Sober/GPU launch path and actual game input acceptance remain
+unverified. No existing Sober process was closed or relaunched.
+
+Actual Qt screenshots show workflow tabs, the session dialog and stopped-run
+markers at 1240×800; 1000×680 was also visually checked. Local Xvfb was extracted
+into /tmp for testing only; no system packages or input permissions were changed.

@@ -7,7 +7,7 @@ from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QKeySequence, QUndoStack
+from PySide6.QtGui import QAction, QKeySequence, QUndoGroup, QUndoStack
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -24,12 +24,16 @@ from PySide6.QtWidgets import (
 
 from . import storage, x11
 from .designer import build_ui
+from .documents import DocumentsMixin
 from .editing import EditingMixin
 from .editor import StepModel, editing_command
 from .engine import DryRun, PlaybackOptions, Replay
+from .isolated import GameSession, IsolatedBackend
 from .linux_input import DeviceMonitor, Recorder, UInputBackend, devices, diagnostics
 from .models import KEY_CODES, MAX_STEPS, Script, Step
 from .preferences import Preferences
+from .run_feedback import RunFeedbackMixin
+from .session_ui import SessionMixin
 from .theme import STYLE, icon
 from .visuals import VisualsMixin
 
@@ -39,6 +43,8 @@ class Bridge(QObject):
     hotkey = Signal(int, str)
     monitor_error = Signal(int, str)
     position_picked = Signal(int, object, str)
+    session_ready = Signal(int, str)
+    session_windows = Signal(int, object, str)
 
 
 def sample():
@@ -55,7 +61,9 @@ def sample():
     )
 
 
-class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
+class MainWindow(
+    DocumentsMixin, RunFeedbackMixin, SessionMixin, VisualsMixin, EditingMixin, QMainWindow
+):
     def __init__(self, config_dir=None, demo=False):
         super().__init__()
         self.config_dir = Path(config_dir) if config_dir else storage.data_dir()
@@ -70,6 +78,9 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
             self.preferences = Preferences()
             self.preferences_error = str(exc)
         self.path = None
+        self.documents = {}
+        self.active_document_id = None
+        self.last_run = None
         self.saved_snapshot = Script().to_dict()
         self.loading = False
         self.busy = False
@@ -83,6 +94,11 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         self.screen_picking = False
         self.overlay = None
         self.portal_connection = None
+        self.game_session = GameSession()
+        self.session_generation = 0
+        self.session_launching = False
+        self.session_query_pending = False
+        self.session_targets = []
         self.connecting_pointer = False
         self.monitor = None
         self.monitor_generation = 0
@@ -94,9 +110,14 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         self.bridge.hotkey.connect(self.route_hotkey)
         self.bridge.monitor_error.connect(self.route_monitor_error)
         self.bridge.position_picked.connect(self.position_picked)
-        self.undo = QUndoStack(self)
-        self.undo.setUndoLimit(50)
-        self.model = StepModel(self.undo)
+        self.bridge.session_ready.connect(self.session_started)
+        self.bridge.session_windows.connect(self.session_windows_ready)
+        self.undo = QUndoGroup(self)
+        initial_stack = QUndoStack(self)
+        initial_stack.setUndoLimit(50)
+        self.undo.addStack(initial_stack)
+        self.undo.setActiveStack(initial_stack)
+        self.model = StepModel(initial_stack)
         self.model.invalid.connect(self.show_error)
         self.pending_rows = None
         self.script_version = 1
@@ -113,6 +134,9 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         self.restore_preferences()
         self.model.changed.connect(self.edited)
         self.model.changed.connect(self.refresh_workflow)
+        self.model.changed.connect(
+            lambda: self.clear_run_feedback(force=True) if not self.loading else None
+        )
         self.name.textChanged.connect(self.edited)
         self.notes.textChanged.connect(self.edited)
         self.add_shortcuts()
@@ -121,9 +145,13 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         self.autosave_timer.timeout.connect(self.autosave)
         self.autosave_timer.start()
         self.capture_timer = QTimer(self)
-        self.capture_timer.setInterval(100)
+        self.capture_timer.setInterval(33)
         self.capture_timer.timeout.connect(self.capture_tick)
         self.capture_timer.start()
+        self.session_timer = QTimer(self)
+        self.session_timer.setInterval(1000)
+        self.session_timer.timeout.connect(self.session_tick)
+        self.session_timer.start()
         self.record_timer = QTimer(self)
         self.record_timer.setInterval(100)
         self.record_timer.timeout.connect(self.record_tick)
@@ -247,6 +275,20 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
     def add_shortcuts(self):
         for key, callback in (
             ("Ctrl+N", self.new_script),
+            ("Ctrl+T", self.new_script),
+            ("Ctrl+W", lambda: self.close_document(self.document_tabs.currentIndex())),
+            (
+                "Ctrl+Tab",
+                lambda: self.document_tabs.setCurrentIndex(
+                    (self.document_tabs.currentIndex() + 1) % max(1, self.document_tabs.count())
+                ),
+            ),
+            (
+                "Ctrl+Shift+Tab",
+                lambda: self.document_tabs.setCurrentIndex(
+                    (self.document_tabs.currentIndex() - 1) % max(1, self.document_tabs.count())
+                ),
+            ),
             ("Ctrl+O", self.open_script),
             ("Ctrl+S", self.save_script),
             ("Ctrl+Shift+S", self.save_as),
@@ -263,7 +305,7 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
 
     def script(self):
         script = Script(
-            self.name.text().strip(),
+            self.name.text().strip() or "Untitled script",
             self.notes.toPlainText(),
             list(self.model.steps),
             self.script_version,
@@ -290,6 +332,7 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         title = self.name.text().strip() or "Untitled script"
         self.setWindowTitle(f"{'● ' if self.dirty() else ''}{title} — Moonlight Studio")
         self.saved_badge.setText("Unsaved" if self.dirty() else "")
+        self.update_document_title()
         self.update_run_summary()
 
     def update_stats(self):
@@ -360,7 +403,7 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         from .pointer import capability
 
         available, description = capability()
-        background = self.mode.currentIndex() == 1
+        background = self.mode.currentIndex() != 0
         portal_ready = bool(self.portal_connection and self.portal_connection.active)
         if portal_ready:
             description = (
@@ -483,6 +526,8 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
                 if self.record_pending
                 else "Preview starts soon. No inputs will be sent. F12 cancels."
                 if self.test_mode.isChecked()
+                else "Playback starts in the selected window. Your desktop input stays free. F12 cancels."
+                if self.mode.currentIndex() != 0
                 else "Playback starts soon. Switch to your target window. F12 cancels."
             )
             self.countdown_progress.setValue(
@@ -529,7 +574,7 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
             else "No saved workflows yet. Use Save workflow to add your first one."
         )
 
-    def load_script(self, script, path=None):
+    def load_script_view(self, script, path=None):
         self.loading = True
         self.path = Path(path) if path else None
         self.script_version = script.version
@@ -546,13 +591,11 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         self.name.setText(script.name)
         self.notes.setPlainText(script.notes)
         self.model.replace(script.steps)
-        self.undo.clear()
         self.saved_snapshot = script.to_dict()
         self.loading = False
         self.edited()
         self.navigate(0, 0)
         self.inspector_panel.hide()
-        QTimer.singleShot(0, self.workflow.canvas.fit)
 
     def confirm_discard(self):
         if self.busy:
@@ -579,18 +622,14 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
             self.show_error(f"Could not clear recovery file: {exc}")
 
     def new_script(self):
-        if self.confirm_discard():
-            self.load_script(Script())
+        self.load_script(Script())
 
     def load_example(self):
-        if self.confirm_discard():
-            self.load_script(sample())
-            self.test_mode.setChecked(True)
-            self.status.setText("Example loaded • test mode is on")
+        self.load_script(sample())
+        self.test_mode.setChecked(True)
+        self.status.setText("Example loaded • test mode is on")
 
     def load_controls_example(self):
-        if not self.confirm_discard():
-            return
         from .actions import create_action
 
         steps = (
@@ -612,8 +651,6 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         self.status.setText("Input controls example · Test mode is on · F1 shows shortcuts")
 
     def open_script(self):
-        if not self.confirm_discard():
-            return
         path, _ = QFileDialog.getOpenFileName(
             self, "Open script", str(self.library_dir), "Scripts (*.json)"
         )
@@ -635,6 +672,15 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
             return self.save_as()
         try:
             script = self.script()
+            for identifier, doc in self.documents.items():
+                if (
+                    identifier != self.active_document_id
+                    and doc.path is not None
+                    and doc.path.resolve() == self.path.resolve()
+                ):
+                    raise ValueError(
+                        "That file is already open in another workflow tab. Use that tab or choose a different filename."
+                    )
             storage.save(script, self.path)
             self.saved_snapshot = script.to_dict()
             self.clear_recovery()
@@ -677,8 +723,7 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
 
     def open_library(self, item):
         path = item.data(Qt.UserRole)
-        if self.confirm_discard():
-            self.open_path(path)
+        self.open_path(path)
 
     def autosave(self):
         if self.loading or self.busy or not self.dirty():
@@ -689,21 +734,12 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
             self.status.setText(f"Autosave unavailable: {exc}")
 
     def offer_recovery(self):
-        if self.recovery_path.exists():
-            try:
-                recovered = storage.load(self.recovery_path)
-                if (
-                    QMessageBox.question(self, "Recover work", "Restore the last autosaved script?")
-                    == QMessageBox.Yes
-                ):
-                    self.load_script(recovered)
-                    self.saved_snapshot = Script().to_dict()
-                    self.edited()
-            except (ValueError, OSError) as exc:
-                self.show_error(f"Could not recover autosave: {exc}")
+        self.recover_documents()
 
     def update_busy(self, busy):
         self.busy = busy
+        self.document_tabs.setEnabled(not busy)
+        self.new_tab_btn.setEnabled(not busy)
         for widget in (
             self.edit_workspace,
             self.name,
@@ -758,21 +794,34 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
             self.routing_changed()
 
     def routing_changed(self):
-        background = self.mode.currentIndex() == 1
+        background = self.mode.currentIndex() != 0
         self.target.setEnabled(background and not self.busy)
         self.refresh_target_btn.setEnabled(background and not self.busy)
         self.target.setVisible(background)
         self.refresh_target_btn.setVisible(background)
+        self.session_controls.setVisible(self.mode.currentIndex() == 2)
+        changed = getattr(self, "last_routing_mode", None) != self.mode.currentIndex()
+        self.last_routing_mode = self.mode.currentIndex()
+        if changed:
+            self.refresh_windows()
+        elif self.mode.currentIndex() == 2 and not self.busy:
+            self.populate_targets(self.session_targets)
         self.routing_hint.setText(
             "Sends to one X11/Xwayland window without taking focus. Games may ignore it. "
             "Mouse movement is a virtual cursor starting at the window center."
-            if background
+            if self.mode.currentIndex() == 1
+            else "Runs in a separate Gamescope display. Your normal mouse, keyboard and other desktops stay independent. Launch the game here first; existing instances cannot be moved."
+            if self.mode.currentIndex() == 2
             else "Sends to the active desktop. Focus the game during the countdown. "
             "Works on Wayland and X11 with uinput access."
         )
         self.update_run_summary()
 
     def refresh_windows(self):
+        if self.mode.currentIndex() == 2:
+            self.populate_targets(self.session_targets)
+            self.session_tick()
+            return
         self.target.clear()
         self.target.addItem("Choose a program window…", None)
         try:
@@ -1015,7 +1064,10 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         self.update_busy(True)
 
     def capture_tick(self):
-        self.update_countdown()
+        if getattr(self, "replay", None) is not None and self.replay.running:
+            self.render_playback()
+        else:
+            self.update_countdown()
         if self.recorder.active:
             self.run_state.setText("●  RECORDING")
             self.status.setText(
@@ -1030,6 +1082,7 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
         if self.busy:
             return
         self.close_overlay()
+        self.clear_run_feedback()
         try:
             script = self.script()
             if (
@@ -1061,6 +1114,11 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
                 if target is None:
                     raise ValueError("Choose a target program window first")
                 factory = partial(x11.BackgroundBackend, target)
+            elif self.mode.currentIndex() == 2:
+                target = self.target.currentData()
+                if target is None or self.game_session.address is None:
+                    raise ValueError("Launch a separate game session and select its window first")
+                factory = partial(IsolatedBackend, self.game_session.address, target)
             else:
                 factory = UInputBackend
                 if self.portal_connection and self.portal_connection.active:
@@ -1145,9 +1203,18 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
             self.autosave()
 
     def on_replay(self, event, value):
+        if (
+            event not in ("error", "finished")
+            and getattr(getattr(self, "replay", None), "timeline", None) is not None
+        ):
+            if event in ("countdown", "state"):
+                self.render_playback()
+            return
         if event == "countdown":
-            self.countdown_total = value
-            self.playback_deadline = time.monotonic() + value
+            self.countdown_total = value["duration"] if isinstance(value, dict) else value
+            self.playback_deadline = (
+                value["deadline"] if isinstance(value, dict) else time.monotonic() + value
+            )
             self.pause_btn.hide()
             self.update_countdown()
         elif event == "waiting":
@@ -1197,6 +1264,7 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
             self.countdown_banner.hide()
             self.model.highlight(-1)
             self.workflow.canvas.highlight(-1)
+            self.render_playback()
             self.run_state.setText("●  READY")
             self.play_btn.setText("Run · F7")
             self.play_btn.setIcon(icon("play", "#211b30"))
@@ -1240,7 +1308,7 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
             event.ignore()
             return
         self.update_busy(False)
-        if not self.confirm_discard():
+        if not self.confirm_close_documents():
             event.ignore()
             return
         if self.portal_connection:
@@ -1249,7 +1317,8 @@ class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
             self.monitor_generation += 1
             self.monitor.stop()
         try:
-            self.recovery_path.unlink(missing_ok=True)
+            for doc in self.documents.values():
+                doc.recovery.unlink(missing_ok=True)
         except OSError:
             pass
         event.accept()

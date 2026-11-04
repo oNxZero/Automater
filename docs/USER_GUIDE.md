@@ -121,7 +121,7 @@ starting points use version 2 when saved; they require Studio v0.4 or newer.
 **Notes** stores starting position, camera direction, bindings and reminders.
 An unsaved-change badge appears in the header. Idle edits are autosaved every five
 seconds; startup offers recovery after an interrupted session. Saved workflows
-are never silently replaced by recovery. New/open/close prompt before discarding
+are never silently replaced by recovery. Closing a changed tab or quitting prompts before discarding
 unsaved work. See [storage and privacy](../README.md#files-and-privacy).
 
 ## Common questions
@@ -245,3 +245,47 @@ click **Use real inputs** to leave preview mode. In background mode the real cur
 stays where it is. For desktop reset on KDE Wayland, connect pointer control in
 Start settings first. A permission or input-device error is shown in the status bar;
 hover it for the full message. See [pointer support](POINTER.md).
+
+
+## Multiple workflows
+
+Use + or Ctrl+T for a workflow tab. Opening a file or example creates another tab;
+opening a file already loaded activates its tab and preserves unsaved changes.
+Tabs have independent undo/redo, selected actions, layout/zoom, starting coordinates,
+run settings and recovery files. * means unsaved. Ctrl+W closes the active tab;
+Ctrl+Tab and Ctrl+Shift+Tab switch. Closing the last tab leaves a blank workflow.
+Tabs are locked during recording/playback so feedback and new captures stay with
+one document. Saving cannot overwrite a file open in a different tab.
+
+## Run independently while using another window
+
+Choose **Settings → Run → Separate game session · Gamescope** and click
+**Set up game session…**. Pick Sober, close any existing Sober instance, and launch.
+Select its game window in Run settings, turn off Test mode, and Run. Gamescope needs
+compatible Vulkan/GPU support. This mode never falls back to desktop injection.
+See the [full setup and compatibility guide](ISOLATED_SESSIONS.md).
+
+## Understand playback and its last result
+
+The countdown uses the replay worker's monotonic deadline. Input checks and target
+setup happen before that countdown. Delay, Timer, cursor reset/settle, pause and
+loop gap have distinct states. Held keys and a Timer can be active together. A
+future key press is not highlighted until it is dispatched. The UI shows the
+latest worker snapshot about 30 times per second, rather than replaying a queue of
+old highlights. Input scheduling is independent of the UI timer.
+
+After Finish, Stop or failure, the latest loop's results remain:
+
+- **Green:** the action completed.
+- **Blue:** the last completed action.
+- **Amber:** the action in progress when stopped.
+- **Red:** the step that failed or could not continue.
+
+Unexecuted actions remain neutral. For grouped movement/holds, all enabled samples
+must finish before the card is marked completed. **Edit → Last playback details**
+shows completed events, failure, requested/actual loop time and maximum measured
+dispatch lateness. These measurements cannot confirm receipt by the game. Details
+exclude countdown/reset/gap and paused time from actual loop duration. Edits or a
+new run clear old markers; switching tabs preserves each tab's latest result.
+
+![Last run markers](run-results.png)
