@@ -31,13 +31,18 @@ Linux input headers. On Fedora these are `python3-devel gcc kernel-headers`; on
 Debian/Ubuntu, `python3-dev build-essential`.
 
 Qt needs EGL/OpenGL and keyboard/XCB libraries. Minimal Debian/Ubuntu systems may
-need `libegl1 libopengl0 libgl1 libxkbcommon0 libxcb-cursor0`. Qt's Wayland plugin is
+need `libegl1 libopengl0 libgl1 libglib2.0-0 fontconfig libfreetype6 libdbus-1-3
+libxkbcommon0 libxcb-cursor0`. Qt's Wayland plugin is
 included. The separate-session mode additionally needs Gamescope and GPU support;
 follow [its guide](ISOLATED_SESSIONS.md) only if using that mode.
 
 On Fedora, common equivalents include `python3-pip python3-devel gcc kernel-headers
 mesa-libEGL libglvnd-opengl mesa-libGL libxkbcommon libxcb xcb-util-cursor fontconfig
-freetype`. On minimal X11 installs, Qt also needs XCB ICCCM/keysyms/XKB libraries.
+freetype glib2`. On minimal X11 installs, Qt also needs XCB ICCCM/keysyms/XKB,
+shape, RandR, render, SHM, sync and Xfixes libraries, plus libX11-xcb. The workflow
+lists the Debian/Ubuntu package names explicitly. A generic "xcb-cursor needed"
+Qt error can indicate another missing XCB dependency; `QT_DEBUG_PLUGINS=1 ./start.sh`
+reports the underlying load failure.
 On native Wayland it needs libwayland client/cursor/EGL libraries. Package names
 vary by distro; the CI workflow shows the exact Debian/Fedora smoke-test setup.
 

@@ -310,6 +310,9 @@ verifies the text viewport keeps its size.
 - CI expands the full Python 3.11/3.14 suite to Ubuntu 22.04 and 24.04. Debian 12
   and Fedora 44 containers install the app and run core/GUI smoke checks; container
   tags were verified. Physical desktop, ARM and GPU coverage remain manual.
+  The first minimal-image run exposed missing Debian GLib and native XCB runtime
+  dependencies; the installation lists now include them explicitly. Native GUI
+  failures retain Qt plugin-loader diagnostics instead of only its generic error.
 - Compatibility reporting and the optional portal probe leave workflow data and
   permissions unchanged. Source/wheel contents, launcher doctor, lint/format and
   documentation links are checked before completion. See [the feature matrix](COMPATIBILITY.md).

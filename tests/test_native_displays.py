@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_gui(env, platform):
+    env = {**env, "QT_DEBUG_PLUGINS": "1"}
     result = subprocess.run(
         [sys.executable, str(ROOT / "scripts/smoke_gui.py")],
         env=env,
