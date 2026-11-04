@@ -1,4 +1,4 @@
-"""Local settings, separate from portable version-1 macro files."""
+"""Local settings, separate from portable macro files."""
 
 import json
 from dataclasses import asdict, dataclass
@@ -17,7 +17,7 @@ class Preferences:
     capture_keys: bool = True
     capture_buttons: bool = True
     capture_motion: bool = True
-    append_recording: bool = False
+    append_recording: bool = True
     test_mode: bool = False
     layout: str = "horizontal"
     start_x: int = 0
@@ -63,7 +63,7 @@ class Preferences:
 
     def save(self, path):
         self.validate()
-        data = {"version": 1, **asdict(self)}
+        data = {"version": 2, **asdict(self)}
         if len(json.dumps(data, indent=2).encode("utf-8")) > 256 * 1024:
             raise ValueError("Preferences file is too large")
         write_json(data, path)
@@ -83,13 +83,16 @@ class Preferences:
         if (
             not isinstance(data, dict)
             or type(data.get("version")) is not int
-            or data.get("version") != 1
+            or data.get("version") not in (1, 2)
         ):
             raise ValueError("Unsupported preferences version")
-        data.pop("version")
+        legacy = data.pop("version") == 1
         if set(data) - set(cls.__dataclass_fields__):
             raise ValueError("Unknown preference fields")
         try:
-            return cls(**data).validate()
+            result = cls(**data).validate()
+            if legacy:
+                result.append_recording = True
+            return result
         except TypeError as exc:
             raise ValueError("Invalid preferences") from exc

@@ -4,7 +4,7 @@ import math
 from bisect import bisect_right
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox,
@@ -135,6 +135,11 @@ class Node(QGraphicsObject):
         self.setAcceptHoverEvents(True)
         self.setCursor(Qt.PointingHandCursor)
         self.hovered = False
+        self.emphasis = 0.0
+        self.animation = QVariantAnimation(self)
+        self.animation.setDuration(140)
+        self.animation.setEasingCurve(QEasingCurve.OutCubic)
+        self.animation.valueChanged.connect(self.animate_emphasis)
         self.setToolTip(
             f"{block.title}\nEvents {block.start + 1}–{block.end}\nClick to edit · drag horizontally to reorder"
         )
@@ -160,6 +165,12 @@ class Node(QGraphicsObject):
         painter.setPen(QPen(border, 2 if self.isSelected() or self.playing else 1))
         painter.setBrush(gradient)
         painter.drawRoundedRect(rect, 12, 12)
+        if self.emphasis:
+            glow = QColor(color)
+            glow.setAlpha(round(22 * self.emphasis))
+            painter.setBrush(glow)
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(rect, 12, 12)
         if not self.block.enabled:
             painter.setOpacity(0.45)
         tint = QColor(color)
@@ -205,10 +216,26 @@ class Node(QGraphicsObject):
 
     def hoverEnterEvent(self, event):
         self.hovered = True
-        self.update()
+        self.transition()
 
     def hoverLeaveEvent(self, event):
         self.hovered = False
+        self.transition()
+
+    def itemChange(self, change, value):
+        result = super().itemChange(change, value)
+        if change == QGraphicsItem.ItemSelectedHasChanged and hasattr(self, "animation"):
+            self.transition()
+        return result
+
+    def transition(self):
+        self.animation.stop()
+        self.animation.setStartValue(self.emphasis)
+        self.animation.setEndValue(1.0 if self.hovered or self.isSelected() else 0.0)
+        self.animation.start()
+
+    def animate_emphasis(self, value):
+        self.emphasis = value
         self.update()
 
     def mousePressEvent(self, event):
@@ -272,6 +299,8 @@ class Node(QGraphicsObject):
             ("Select all\tCtrl+A", "select_all"),
             ("Randomize timing…", "randomize"),
             ("Use fixed timing", "fixed_timing"),
+            ("Re-record selected actions…", "rerecord"),
+            ("Show pointer path…", "preview_pointer"),
             ("Enable / disable", "toggle"),
             ("Split holds into press / release", "split"),
             ("Move earlier\tAlt+←", "left"),
@@ -346,11 +375,12 @@ class Canvas(QGraphicsView):
         self.setScene(QGraphicsScene(self))
         self.setFrameShape(QGraphicsView.NoFrame)
         self.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
-        self.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.setDragMode(QGraphicsView.RubberBandDrag)
+        self.pan_origin = None
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.setAccessibleName(
-            "Workflow. Ctrl-click adds selection. Shift-drag box selects. Ctrl+C copies; Ctrl+V pastes."
+            "Workflow. Left-drag empty space to box select. Middle-drag to pan. Ctrl-click adds selection."
         )
         self.blocks, self.starts, self.nodes = [], [], {}
         self.selected_indices = set()
@@ -441,8 +471,12 @@ class Canvas(QGraphicsView):
                 b = next_pos + QPointF(CARD_WIDTH / 2, 0)
                 path = QPainterPath(a)
                 middle_y = (a.y() + b.y()) / 2
-                path.lineTo(a.x(), middle_y)
-                path.lineTo(b.x(), middle_y)
+                radius = min(16, (b.y() - a.y()) / 2, abs(b.x() - a.x()) / 2)
+                direction = 1 if b.x() > a.x() else -1
+                path.lineTo(a.x(), middle_y - radius)
+                path.quadTo(a.x(), middle_y, a.x() + direction * radius, middle_y)
+                path.lineTo(b.x() - direction * radius, middle_y)
+                path.quadTo(b.x(), middle_y, b.x(), middle_y + radius)
                 path.lineTo(b)
                 middle = QPointF((a.x() + b.x()) / 2, middle_y)
             else:
@@ -541,19 +575,38 @@ class Canvas(QGraphicsView):
         self.zoomChanged.emit(round(scale * 100))
 
     def mousePressEvent(self, event):
-        if (
-            event.button() == Qt.LeftButton
-            and event.modifiers() & Qt.ShiftModifier
-            and not isinstance(
+        if event.button() == Qt.MiddleButton:
+            self.pan_origin = event.position().toPoint()
+            self.setCursor(Qt.ClosedHandCursor)
+            event.accept()
+            return
+        if event.button() == Qt.LeftButton and not event.modifiers() & Qt.ControlModifier:
+            if not isinstance(
                 self.itemAt(event.position().toPoint()), (Node, InsertPoint, StartPoint)
-            )
-        ):
-            self.setDragMode(QGraphicsView.RubberBandDrag)
+            ):
+                self.choose_indices(set())
         super().mousePressEvent(event)
 
+    def mouseMoveEvent(self, event):
+        if self.pan_origin is not None:
+            delta = event.position().toPoint() - self.pan_origin
+            self.pan_origin = event.position().toPoint()
+            for bar, offset in (
+                (self.horizontalScrollBar(), delta.x()),
+                (self.verticalScrollBar(), delta.y()),
+            ):
+                bar.setValue(bar.value() - offset)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
     def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MiddleButton:
+            self.pan_origin = None
+            self.unsetCursor()
+            event.accept()
+            return
         super().mouseReleaseEvent(event)
-        self.setDragMode(QGraphicsView.ScrollHandDrag)
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.ControlModifier:
@@ -609,6 +662,7 @@ class Workflow(QWidget):
             ("Copy", "copy"),
             ("Paste", "paste"),
             ("Duplicate", "duplicate"),
+            ("Re-record", "rerecord"),
             ("Delete", "delete"),
         ):
             btn = QPushButton(text)
@@ -674,7 +728,7 @@ class Workflow(QWidget):
         self.previous.setEnabled(self.canvas.page > 0)
         self.next.setEnabled((self.canvas.page + 1) * PAGE_SIZE < count)
         self.page_label.setText(
-            f"{count:,} actions · Shift-drag selects"
+            f"{count:,} actions · Drag to select"
             if count <= PAGE_SIZE
             else f"Actions {self.canvas.page * PAGE_SIZE + 1:,}–{min(count, (self.canvas.page + 1) * PAGE_SIZE):,} of {count:,}"
         )

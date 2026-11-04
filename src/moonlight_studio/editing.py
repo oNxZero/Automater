@@ -115,7 +115,7 @@ class EditingMixin:
             else:
                 self.action_inspector.select(self.active_block, self.model.steps)
             self.workflow.update_footer()
-            if open_inspector and len(blocks) == 1:
+            if open_inspector and blocks:
                 self.show_inspector(0)
         finally:
             self._sync_selection = False
@@ -125,6 +125,9 @@ class EditingMixin:
             return
         rows = sorted({i.row() for i in self.table.selectionModel().selectedRows()})
         if not rows or not self.blocks:
+            if not rows:
+                self._event_selection_rows = []
+                self.select_blocks([], open_inspector=False, preserve_table=True)
             return
         self._event_selection_rows = rows
         indices = {max(0, bisect_right(self.workflow.canvas.starts, r) - 1) for r in rows}
@@ -188,40 +191,67 @@ class EditingMixin:
         )
 
     def apply_block(self, block, values):
-        if self.busy or block not in self.blocks:
+        blocks = block if isinstance(block, list) else [block]
+        if self.busy or not blocks or any(b not in self.blocks for b in blocks):
             return
+        if len(blocks) > 1 and self.events_btn.isChecked():
+            complete = {r for b in blocks for r in range(b.start, b.end)}
+            if set(self.selected_rows()) != complete:
+                self.show_error(
+                    "Select complete actions for batch editing; use Events cells to edit individual events"
+                )
+                return
         try:
-            subset = list(self.model.steps[block.start : block.end])
-            original = sum(s.delay_ms for s in subset[1:])
-            original_max = sum(s.maximum_ms for s in subset[1:])
-            new_max = values.get("duration_max")
-            adjust = (
-                values["duration"] != original
-                or (new_max if new_max is not None else values["duration"]) != original_max
-            )
-            for i, step in enumerate(subset):
-                edits = {"enabled": values["enabled"]}
-                if i == 0:
-                    edits.update(delay_ms=values["delay"], delay_max_ms=values.get("delay_max"))
-                elif adjust:
-                    weight = step.delay_ms / original if original else 1 / (len(subset) - 1)
-                    edits.update(
-                        delay_ms=values["duration"] * weight,
-                        delay_max_ms=new_max * weight if new_max is not None else None,
-                    )
-                if block.kind in ("key", "mouse"):
-                    edits["code"] = values["code"]
-                elif block.kind in ("move", "scroll") and len(subset) == 1:
-                    edits.update(x=values["x"], y=values["y"])
-                subset[i] = replace(step, **edits)
-            self.pending_rows = list(range(block.start, block.end))
-            self.model.commit(
-                self.model.steps[: block.start] + subset + self.model.steps[block.end :],
-                "Edit action",
-            )
-            self.status.setText("Action updated · Ctrl+Z to undo")
+            steps = list(self.model.steps)
+            for target in blocks:
+                subset = self.edited_subset(target, values)
+                steps[target.start : target.end] = subset
+            self.pending_rows = [r for b in blocks for r in range(b.start, b.end)]
+            self.model.commit(steps, "Edit selected actions" if len(blocks) > 1 else "Edit action")
+            self.status.setText(f"{len(blocks)} action(s) updated · Ctrl+Z to undo")
         except (ValueError, TypeError) as exc:
             self.show_error(str(exc))
+
+    def edited_subset(self, block, values):
+        subset = list(self.model.steps[block.start : block.end])
+        original = sum(s.delay_ms for s in subset[1:])
+        original_max = sum(s.maximum_ms for s in subset[1:])
+        changed = values.get("_changed")
+        if changed is not None:
+            defaults = {
+                "enabled": subset[0].enabled,
+                "code": subset[0].code,
+                "delay": subset[0].delay_ms,
+                "delay_max": subset[0].delay_max_ms,
+                "duration": original,
+                "duration_max": original_max
+                if any(s.delay_max_ms is not None for s in subset[1:])
+                else None,
+                "x": subset[0].x,
+                "y": subset[0].y,
+            }
+            values = {**defaults, **{k: v for k, v in values.items() if k in changed}}
+        new_max = values.get("duration_max")
+        adjust = (
+            values["duration"] != original
+            or (new_max if new_max is not None else values["duration"]) != original_max
+        )
+        for i, step in enumerate(subset):
+            edits = {"enabled": values["enabled"]}
+            if i == 0:
+                edits.update(delay_ms=values["delay"], delay_max_ms=values.get("delay_max"))
+            elif adjust:
+                weight = step.delay_ms / original if original else 1 / (len(subset) - 1)
+                edits.update(
+                    delay_ms=values["duration"] * weight,
+                    delay_max_ms=new_max * weight if new_max is not None else None,
+                )
+            if block.kind in ("key", "mouse"):
+                edits["code"] = values["code"]
+            elif block.kind in ("move", "scroll") and len(subset) == 1:
+                edits.update(x=values["x"], y=values["y"])
+            subset[i] = replace(step, **edits)
+        return subset
 
     def copy_selection(self):
         rows = self.selected_rows()
@@ -307,7 +337,7 @@ class EditingMixin:
             QMessageBox.information(
                 self,
                 "Workflow shortcuts",
-                "Ctrl+C / X / V  Copy / cut / paste\nCtrl+D  Duplicate\nCtrl+A  Select all actions (all pages)\nDelete / Backspace  Remove selection\nCtrl+Z / Ctrl+Shift+Z  Undo / redo\nEsc  Clear selection\n\nCtrl-click  Add/remove an action\nShift-click or Shift+arrows  Select a range\nShift-drag empty space  Box select\nAlt+arrows  Move selection\nDrag empty space  Pan\nCtrl+wheel or Ctrl+ +/−  Zoom\nCtrl+0  Fit\n\nF6  Record / finish\nF7  Run / stop\nF8  Pause / resume\nF12  Emergency stop",
+                "Ctrl+C / X / V  Copy / cut / paste\nCtrl+D  Duplicate\nCtrl+A  Select all actions (all pages)\nDelete / Backspace  Remove selection\nCtrl+Z / Ctrl+Shift+Z  Undo / redo\nEsc  Clear selection\n\nCtrl-click  Add/remove an action\nShift-click or Shift+arrows  Select a range\nLeft-drag empty space  Box select\nAlt+arrows  Move selection\nMiddle-drag empty space  Pan\nCtrl+wheel or Ctrl+ +/−  Zoom\nCtrl+0  Fit\n\nF6  Record / finish\nF7  Run / stop\nF8  Pause / resume\nF12  Emergency stop",
             )
             return
         try:
@@ -330,6 +360,10 @@ class EditingMixin:
                 self.duplicate()
             elif command == "delete":
                 self.delete()
+            elif command == "rerecord":
+                self.rerecord_selection()
+            elif command == "preview_pointer":
+                self.preview_pointer()
             elif command in ("toggle", "split", "fixed_timing", "randomize"):
                 rows = self.selected_rows()
                 if not rows:

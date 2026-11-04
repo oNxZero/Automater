@@ -12,6 +12,7 @@ from pathlib import Path
 
 from evdev import InputDevice, UInput, ecodes, list_devices
 
+from .engine import MODIFIER_KEYS
 from .models import KEY_CODES, MAX_STEPS, Step
 
 VIRTUAL_NAME = "Moonlight Studio Virtual Input"
@@ -189,7 +190,10 @@ class Recorder:
             if self.active:
                 delay = max(0, min((time.monotonic() - self._last) * 1000, 3_600_000))
                 self.steps.append(Step(delay, "wait"))
-                self.steps.extend(Step(0, "key_up", code) for code in sorted(self.held))
+                self.steps.extend(
+                    Step(0, "key_up", code)
+                    for code in sorted(self.held, key=lambda c: (c in MODIFIER_KEYS, c))
+                )
             self.active = False
             self.held.clear()
             return list(self.steps)
@@ -305,7 +309,8 @@ class UInputBackend:
     # handled by Replay and remains cancellable even with a zero user countdown.
     startup_delay = 0.5
 
-    def __init__(self):
+    def __init__(self, pointer_factory=None):
+        self.pointer_factory = pointer_factory
         if not os.access("/dev/uinput", os.W_OK):
             raise RuntimeError(
                 "Cannot write /dev/uinput. Open Setup for the Linux permissions guide."
@@ -320,7 +325,7 @@ class UInputBackend:
     def prepare_start(self, point):
         from .pointer import desktop_pointer
 
-        self.pointer = desktop_pointer()
+        self.pointer = (self.pointer_factory or desktop_pointer)()
         self.pointer.validate(point)
 
     def begin_cycle(self, point):

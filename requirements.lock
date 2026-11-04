@@ -5,3 +5,4 @@ shiboken6==6.11.2
 evdev==1.9.3
 python-xlib==0.33
 six==1.17.0
+dbus-next==0.2.3

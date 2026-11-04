@@ -57,7 +57,7 @@ events can create unbalanced holds; the existing replay warning and cleanup appl
 
 ### Explore a long routine
 
-Mouse wheel pans horizontally. Drag empty canvas space to pan in either direction.
+Mouse wheel pans horizontally. Left-drag empty canvas space to box-select; middle-drag pans in either direction.
 Ctrl + wheel zooms; the bottom controls zoom in/out or fit. Zoom is bounded so a
 long sequence does not turn into unreadable dots. Workflows over 60 actions are
 paged. Previous and Next move through those pages. Playback follows the active
@@ -99,8 +99,10 @@ missing device access. If your original Moonlight clicker works, the same access
 may already be available.
 
 Press F6. After the countdown, do your routine and press F6 again. By default the result
-replaces the current event sequence; Undo restores it. Enable **Append to current
-workflow** in Devices to add to existing actions instead. F12 also finishes capture
+appends to the existing workflow. To replace a part, select one action or adjacent
+actions and choose **Re-record**. Discard keeps the original; Undo restores it after
+finishing. Empty recordings keep existing actions. Disable **Append to current
+workflow** in Devices for a confirmed replacement of all actions. F12 also finishes capture
 or cancels a countdown. Control hotkeys never enter the recording. Capture in
 progress stays in memory until stopped; stopping hands it to the editor and autosave.
 After reconnecting a device, refresh the device list. Selection is remembered using
@@ -170,8 +172,8 @@ context menu's **Use fixed timing** removes ranges and keeps their minimum value
 
 ## Selection and clipboard
 
-Ctrl-click toggles a card. Shift-click selects a range. Shift-drag from empty canvas
-box-selects. Ctrl+A selects every action, including other pages. Page navigation
+Ctrl-click toggles a card. Shift-click selects a range. Left-drag from empty canvas
+box-selects; middle-drag pans. Ctrl+A selects every action, including other pages. Page navigation
 keeps your selection. Copy/cut/paste and duplicate act in original sequence order;
 paste inserts after the last selected event, or at the end if nothing is selected.
 Clipboard data is bounded, validated JSON and includes all original samples/ranges.
@@ -197,10 +199,49 @@ Enable the starting point and set X/Y plus settle time. The cursor moves first o
 waits three seconds and reads the cursor without moving it. F12 cancels capture;
 a late result from a cancelled pick is ignored.
 
-Coordinates are saved with the script. Desktop coordinates require X11 or Hyprland;
-other Wayland desktops cannot use exact desktop reset in this version. Background
+Coordinates are saved with the script. X11 and Hyprland support direct positioning.
+On KDE or another Wayland desktop, use **Connect Wayland pointer**, approve pointer
+control and select physical monitors. This requires a compatible desktop portal.
+The connection is temporary and closes with Studio. No screen frames are read or saved.
+Use **Choose on screen** to click a location, and **Show starting point** to check it.
+A portal acknowledgment is not a guarantee that a game accepted the move. Background
 coordinates are relative to the selected X11 window's client area and do not move
 or capture the real pointer. The target must still be chosen each session. Switching
 to another workflow restores its saved starting point or turns reset off if it has none.
 
 ![Start controls](start-controls.png)
+
+
+## Edit matching actions together
+
+Select matching Holds, Presses, Releases, Timers, Moves or Scrolls. The Action panel
+shows **Apply to N actions**. Different values show Mixed or Multiple keys. Change
+only the fields you want copied, then Apply. Untouched keys, coordinates, durations
+and timing ranges stay as they are. One undo restores the whole batch. Holds and
+standalone Press/Release controls are different types. Mixed action types retain
+copy/delete/randomize; select matching types for shared properties.
+
+![Batch properties](batch-edit.png)
+
+## Pointer path guides
+
+Select a movement card and choose **Show pointer path** in its properties or the
+context menu. The guide marks start/end and disappears after four seconds. It is
+click-through and sends no input. If the script has no starting point, click a
+preview origin first. Esc/F12 or right-click cancels a point picker. The point is
+chosen on mouse release so the selection click is not passed to another app.
+
+Recorded movement is relative device counts. Desktop scaling, acceleration and game
+sensitivity affect the actual path, so this guide is approximate. It is not screen
+matching or a prediction of a game's camera. Background coordinates are window-local;
+desktop overlays are unavailable for that routing mode.
+
+![Temporary pointer path guide](pointer-guide.png)
+
+## Playback runs but the mouse does not move
+
+Check the visible **Test mode** line first. Test mode intentionally emits nothing;
+click **Use real inputs** to leave preview mode. In background mode the real cursor
+stays where it is. For desktop reset on KDE Wayland, connect pointer control in
+Start settings first. A permission or input-device error is shown in the status bar;
+hover it for the full message. See [pointer support](POINTER.md).

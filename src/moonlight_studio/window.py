@@ -31,6 +31,7 @@ from .linux_input import DeviceMonitor, Recorder, UInputBackend, devices, diagno
 from .models import KEY_CODES, MAX_STEPS, Script, Step
 from .preferences import Preferences
 from .theme import STYLE, icon
+from .visuals import VisualsMixin
 
 
 class Bridge(QObject):
@@ -54,7 +55,7 @@ def sample():
     )
 
 
-class MainWindow(EditingMixin, QMainWindow):
+class MainWindow(VisualsMixin, EditingMixin, QMainWindow):
     def __init__(self, config_dir=None, demo=False):
         super().__init__()
         self.config_dir = Path(config_dir) if config_dir else storage.data_dir()
@@ -73,14 +74,20 @@ class MainWindow(EditingMixin, QMainWindow):
         self.loading = False
         self.busy = False
         self.record_pending = False
+        self.record_replace_rows = None
         self.playback_deadline = None
         self.playback_started = False
         self.pick_deadline = None
         self.pick_generation = 0
         self.picking = False
+        self.screen_picking = False
+        self.overlay = None
+        self.portal_connection = None
+        self.connecting_pointer = False
         self.monitor = None
         self.monitor_generation = 0
         self.monitor_ok = False
+        self.monitor_has_keyboard = False
         self.recorder = Recorder()
         self.bridge = Bridge()
         self.bridge.replay.connect(self.on_replay)
@@ -137,6 +144,12 @@ class MainWindow(EditingMixin, QMainWindow):
         build_ui(self)
 
     def keyPressEvent(self, event):
+        fallback = {Qt.Key_F6: "record", Qt.Key_F7: "play", Qt.Key_F8: "pause", Qt.Key_F12: "stop"}
+        if (not self.monitor_ok or not self.monitor_has_keyboard) and event.key() in fallback:
+            if not event.isAutoRepeat():
+                self.on_hotkey(fallback[event.key()])
+            event.accept()
+            return
         focus = QApplication.focusWidget()
         while focus is not None and focus is not self:
             if isinstance(
@@ -330,15 +343,35 @@ class MainWindow(EditingMixin, QMainWindow):
         self.transport_hint.setText(
             self.transport_hint.fontMetrics().elidedText(summary, Qt.ElideRight, 230)
         )
+        self.preview_banner.setVisible(self.test_mode.isChecked())
+        self.real_inputs_btn.setEnabled(not self.busy)
         self.record_btn.setToolTip(
             "Append a recording to the current actions · F6"
             if self.append_recording.isChecked()
             else "Replace actions with a recording; Undo restores them · F6"
         )
+        if not self.recorder.active and not self.record_pending:
+            self.record_btn.setText(
+                "Append · F6"
+                if self.model.steps and self.append_recording.isChecked()
+                else "Record · F6"
+            )
         from .pointer import capability
 
         available, description = capability()
         background = self.mode.currentIndex() == 1
+        portal_ready = bool(self.portal_connection and self.portal_connection.active)
+        if portal_ready:
+            description = (
+                "Wayland pointer control connected. Coordinates use the approved monitors."
+            )
+        elif not available:
+            description = "Wayland needs pointer permission for exact positioning. Connect below, then approve your monitors."
+        if self.test_mode.isChecked():
+            description = (
+                "Test mode: cursor reset is simulated. Turn off Test mode for real movement. "
+                + description
+            )
         self.start_capability.setText(
             "Target window client coordinates; real cursor stays unchanged."
             if background
@@ -349,6 +382,13 @@ class MainWindow(EditingMixin, QMainWindow):
         self.pick_position_btn.setEnabled(
             not self.busy and not background and available and self.start_enabled.isChecked()
         )
+        self.portal_connect_btn.setVisible(not available and not background)
+        self.portal_connect_btn.setText(
+            "Reconnect pointer control" if portal_ready else "Connect Wayland pointer"
+        )
+        self.portal_connect_btn.setEnabled(not self.busy)
+        self.pick_screen_btn.setEnabled(not self.busy and not background)
+        self.preview_start_btn.setEnabled(not self.busy and not background)
         start_label = (
             f"{self.start_x.value()}, {self.start_y.value()}"
             if self.start_enabled.isChecked()
@@ -379,7 +419,12 @@ class MainWindow(EditingMixin, QMainWindow):
                 + cycle * count
                 + max(0.01, self.gap.value()) * max(0, count - 1)
             )
-            estimate += f" · {total:.2f} s total"
+            maximum_total = total + (cycle_max - cycle) * count
+            estimate += (
+                f" · {total:.2f}"
+                + (f"–{maximum_total:.2f}" if maximum_total != total else "")
+                + " s total"
+            )
         else:
             estimate += " · repeats until stopped"
         self.run_estimate.setText(estimate)
@@ -689,7 +734,7 @@ class MainWindow(EditingMixin, QMainWindow):
         ):
             widget.setEnabled(not busy)
         self.play_btn.setEnabled(not self.recorder.active and not self.record_pending)
-        if self.picking:
+        if self.picking or self.screen_picking or self.connecting_pointer:
             self.play_btn.setEnabled(False)
         self.record_btn.setEnabled(not busy or self.recorder.active or self.record_pending)
         self.pause_btn.setEnabled(bool(getattr(self, "replay", None) and self.replay.running))
@@ -698,6 +743,7 @@ class MainWindow(EditingMixin, QMainWindow):
             busy and bool(getattr(self, "replay", None) and self.replay.running)
         )
         self.stop_btn.setVisible(busy)
+        self.cancel_capture_btn.setVisible(self.recorder.active or self.record_pending)
         self.run_state.setVisible(busy)
         self.progress.setVisible(busy)
         for nav in self.nav_buttons[2:]:
@@ -823,6 +869,7 @@ class MainWindow(EditingMixin, QMainWindow):
                 self.monitor.start()  # Returns only after physical devices are open.
                 self.monitor_ok = True
                 keyboard = any(i.data(Qt.UserRole + 2) for i in selected)
+                self.monitor_has_keyboard = keyboard
                 self.notice.setText(
                     "Input devices connected. Your selection is ready."
                     if keyboard
@@ -882,6 +929,21 @@ class MainWindow(EditingMixin, QMainWindow):
             return
         if self.busy:
             return
+        self.begin_recording()
+
+    def rerecord_selection(self):
+        if self.busy:
+            return
+        rows = self.selected_rows()
+        if not rows:
+            self.show_error("Select an action to re-record first")
+            return
+        if rows != list(range(rows[0], rows[-1] + 1)):
+            self.show_error("Re-record one action or adjacent actions together")
+            return
+        self.begin_recording(rows)
+
+    def begin_recording(self, replace_rows=None):
         if not any(
             w.isChecked() for w in (self.capture_keys, self.capture_buttons, self.capture_motion)
         ):
@@ -892,7 +954,27 @@ class MainWindow(EditingMixin, QMainWindow):
             self.navigate(2)
             self.show_error("No selected readable input devices. Open Permissions & help in Setup.")
             return
-        self.record_base = list(self.model.steps) if self.append_recording.isChecked() else []
+        if replace_rows is None and not self.append_recording.isChecked() and self.model.steps:
+            if (
+                QMessageBox.question(
+                    self,
+                    "Replace entire workflow?",
+                    "Replace all existing actions with the next recording? Choose No to keep them.\n"
+                    "To add actions, enable Append to current workflow in Devices.",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                != QMessageBox.Yes
+            ):
+                return
+        self.record_replace_rows = list(replace_rows) if replace_rows is not None else None
+        if replace_rows is not None:
+            self.record_prefix = list(self.model.steps[: replace_rows[0]])
+            self.record_suffix = list(self.model.steps[replace_rows[-1] + 1 :])
+        else:
+            self.record_prefix = list(self.model.steps) if self.append_recording.isChecked() else []
+            self.record_suffix = []
+        self.record_base = self.record_prefix + self.record_suffix
         if len(self.record_base) >= MAX_STEPS - len(KEY_CODES) - 1:
             self.show_error("Not enough space to append a recording. Start a new workflow.")
             return
@@ -911,7 +993,14 @@ class MainWindow(EditingMixin, QMainWindow):
         remaining = self.record_deadline - time.monotonic()
         if remaining > 0:
             self.run_state.setText("●  STARTING")
-            self.status.setText(f"Recording starts in {remaining:.1f}s • F12 cancels")
+            operation = (
+                "Re-record selection"
+                if self.record_replace_rows is not None
+                else "Append recording"
+                if self.record_prefix
+                else "Record"
+            )
+            self.status.setText(f"{operation} starts in {remaining:.1f}s · F12 cancels")
             return
         self.record_timer.stop()
         self.record_pending = False
@@ -939,8 +1028,23 @@ class MainWindow(EditingMixin, QMainWindow):
             return
         if self.busy:
             return
+        self.close_overlay()
         try:
             script = self.script()
+            if (
+                self.start_enabled.isChecked()
+                and not self.test_mode.isChecked()
+                and not self.mode.currentIndex()
+            ):
+                from .pointer import capability
+
+                if not capability()[0] and not (
+                    self.portal_connection and self.portal_connection.active
+                ):
+                    self.show_inspector(2)
+                    raise ValueError(
+                        "Coordinate reset needs Wayland pointer permission. Click Connect Wayland pointer, or disable reset."
+                    )
             if not self.test_mode.isChecked() and script.warnings():
                 response = QMessageBox.question(
                     self,
@@ -958,6 +1062,12 @@ class MainWindow(EditingMixin, QMainWindow):
                 factory = partial(x11.BackgroundBackend, target)
             else:
                 factory = UInputBackend
+                if self.portal_connection and self.portal_connection.active:
+                    from .portal import PortalPointer
+
+                    factory = partial(
+                        UInputBackend, pointer_factory=lambda: PortalPointer(self.portal_connection)
+                    )
             self.playback_error = False
             self.playback_started = False
             self.playback_stopped = False
@@ -989,7 +1099,12 @@ class MainWindow(EditingMixin, QMainWindow):
         if getattr(self, "replay", None) and self.replay.running:
             self.replay.pause()
 
-    def stop(self):
+    def stop(self, discard_recording=False):
+        self.close_overlay()
+        if self.connecting_pointer:
+            self.connecting_pointer = False
+            self.portal_connection.close()
+            self.status.setText("Pointer connection cancelled")
         self.pick_generation += 1
         self.picking = False
         self.pick_deadline = self.playback_deadline = None
@@ -1000,15 +1115,25 @@ class MainWindow(EditingMixin, QMainWindow):
             self.status.setText("Recording cancelled")
         if self.recorder.active:
             steps = self.recorder.stop()
-            self.selection_anchor = 0 if steps else -1
-            prefix = getattr(self, "record_base", [])
-            self.selection_anchor = len(prefix) if steps else -1
-            self.model.commit(
-                prefix + steps, "Append recording" if prefix else "Replace with recording"
-            )
-            self.status.setText(
-                f"Recording finished • {len(steps):,} steps • Undo restores previous steps"
-            )
+            prefix = getattr(self, "record_prefix", [])
+            suffix = getattr(self, "record_suffix", [])
+            if discard_recording or not any(s.action != "wait" for s in steps):
+                self.status.setText("Recording discarded · existing actions kept")
+            else:
+                self.selection_anchor = len(prefix)
+                self.pending_rows = list(range(len(prefix), len(prefix) + len(steps)))
+                self.model.commit(
+                    prefix + steps + suffix,
+                    "Re-record selection"
+                    if self.record_replace_rows is not None
+                    else "Append recording"
+                    if prefix
+                    else "Record workflow",
+                )
+                self.status.setText(
+                    f"Recorded {len(steps):,} events · Ctrl+Z restores previous actions"
+                )
+        self.record_replace_rows = None
         self.record_btn.setText("Record · F6")
         if getattr(self, "replay", None) and self.replay.running:
             self.playback_stopped = True
@@ -1117,6 +1242,8 @@ class MainWindow(EditingMixin, QMainWindow):
         if not self.confirm_discard():
             event.ignore()
             return
+        if self.portal_connection:
+            self.portal_connection.close()
         if self.monitor:
             self.monitor_generation += 1
             self.monitor.stop()

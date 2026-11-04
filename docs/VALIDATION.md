@@ -1,11 +1,11 @@
-# Verification of v0.4
+# Verification of v0.5
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
 Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **137 automated tests passed**, including offscreen Qt workflows and five live X11
+- **160 automated tests passed**, including offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Reproduced a Qt/PySide6 6.12.0 reference-count crash during repeated painting on
@@ -65,6 +65,21 @@ Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
   X11 tests and Qt offscreen rendering. Check the repository's Actions tab for
   remote run results; the local results above are independent of CI availability.
 
+## v0.5 regression checks
+
+Batch editing checks partial field updates, differing keys/durations/ranges, atomic
+validation and single-step undo. Capture checks default append, legacy preference
+migration, confirmed replacement, empty capture, selected re-record/discard/undo and
+modifier release order. Qt checks unmodified box selection, middle-drag, smooth
+highlight transitions, curved grid paths, point picking/cancellation, click-through
+overlay flags, safe overlay cleanup and Test mode visibility/local F-key fallback.
+
+Five portal tests communicate over a real private D-Bus daemon to a fake portal,
+verifying request/response serialization, permission denial/revocation, cancellation,
+coordinate bounds/scaling and the window-to-replay integration across two loop resets.
+No real portal permission prompt is opened and no actual cursor movement is emitted.
+The synthetic portal cannot establish physical compositor or game compatibility.
+
 ## Requires a real desktop before calling this game-tested
 
 The v0.4 additions also verify Press/Release grouping, extended keys, random ranges,
@@ -97,9 +112,14 @@ manual checks remain unverified:
    mode; an X11 receiver test cannot establish game compatibility.
 5. Test high polling-rate mice and extended recordings near the 200,000-step limit;
    validate memory usage and timing on the user's actual machine.
-6. On X11 and Hyprland, pick a desktop point and run at least two loops. Check
+6. On X11, Hyprland and an approved KDE portal session, pick a desktop point and run at least two loops. Check
    monitor scaling, pointer capture, settle delay and interruption. Verify exact
    background coordinates separately in the intended X11 application.
 
 Native Wayland background routing, gamepad/absolute input, Windows/macOS, process
-watchdogs, and packaged installers are roadmap work, not verified v0.4 features.
+watchdogs, and packaged installers are roadmap work, not verified v0.5 features.
+
+7. On KDE and GNOME portal backends, approve the intended monitors, deny/cancel,
+   revoke permission during a loop, change monitor layout/scale, reconnect, and
+   verify that reset really reaches the point. Test overlay positioning and
+   click-through behavior, especially with fractional scaling and fullscreen games.

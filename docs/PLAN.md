@@ -205,3 +205,18 @@ Implemented:
 Next useful additions: configurable hotkeys, named action groups, saved run presets,
 screen-based conditions and additional compositor positioning adapters. These need
 real desktop validation before being advertised as supported.
+
+
+## v0.5: shared properties, safer recording and visible pointer control
+
+Implemented matching-action batch properties with changed-field tracking and atomic
+undo; ordinary left-drag selection and middle-drag panning; default append with
+legacy migration; empty/discarded capture preservation; selected-span re-recording;
+explicit whole-workflow replacement; pointer picking and temporary click-through
+guides; prominent Test mode feedback and local F-key fallback; user-authorized
+Wayland portal positioning with cancellation/revocation; short highlight/guide
+animations and rounded Grid connector corners.
+
+The [audit](AUDIT.md) records verified fixes and remaining manual checks. Native
+Wayland background routing, conditional execution and image matching remain future
+work; portal pointer control is an optional desktop-positioning adapter.

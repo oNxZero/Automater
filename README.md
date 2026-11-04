@@ -10,7 +10,7 @@ Record your keyboard and mouse. Shape the sequence visually. Run it your way.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Studio-v0.4-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Studio-v0.5-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 
 A native Python desktop app inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
@@ -35,6 +35,32 @@ Your original input samples and timings stay available in the **Events** view.
 | Click a card to edit its properties | Pause, resume and F12 emergency stop | Atomic saves and autosave recovery |
 | Insert between cards; duplicate or reorder | Watch the active action during replay | Undo / redo up to 50 event edits |
 
+## New in v0.5: edit together, record safely
+
+- **Batch properties:** select matching actions and edit their key, timing, random
+  range, enabled state or movement. Only changed fields apply; mixed values are
+  marked. Apply is one undoable change.
+- **Desktop-style selection:** left-drag empty canvas to box-select. Middle-drag
+  pans; Ctrl-click toggles cards and Shift-click extends a range.
+- **Append by default:** Record adds to your workflow. Empty or discarded captures
+  keep existing actions. Replacing the entire workflow asks first.
+- **Re-record selection:** choose one action or adjacent actions, then Re-record.
+  Finish with F6, discard with the on-screen Discard button, or undo afterward.
+- **Pointer guides:** Show pointer path displays a temporary, click-through screen
+  guide. Choose on screen selects a starting point; Show starting point marks it.
+- **Wayland positioning:** KDE/GNOME-compatible desktop portals can authorize
+  absolute pointer positioning. Connect in Settings → Start and approve monitors.
+  No permission prompt is opened automatically. Requires a compatible portal backend.
+- **Clear playback mode:** a visible Test mode explanation and Use real inputs
+  button prevent confusing previews with real playback. Local F-keys also work
+  while the app is focused when global device monitoring is unavailable.
+- **Smoother visuals:** short card hover/selection transitions, fading guides and
+  rounded grid connector corners. Extra timing fields appear only when needed.
+
+![Editing matching actions together](docs/batch-edit.png)
+
+See the [bug and usability audit](docs/AUDIT.md) for fixes and remaining checks.
+
 ## New in v0.4: a complete input editor
 
 - **Press, Hold, Release and Timer:** search the Linux keyboard/button list, choose a
@@ -43,7 +69,7 @@ Your original input samples and timings stay available in the **Events** view.
 - **Random timing:** set minimum/maximum delays or hold durations. Each event samples
   a fresh value on every loop. Select several actions → Edit → Randomize selected
   timing to apply percentage variation in one undoable change.
-- **Real editing controls:** Ctrl/Shift multi-selection, Shift-drag box selection,
+- **Real editing controls:** Ctrl/Shift multi-selection, left-drag box selection,
   copy/cut/paste, duplicate, delete, selection-wide enable/disable and undo/redo.
   Copy/paste retains keys, timers, ranges and grouping metadata.
 - **Three layouts:** Horizontal, Vertical and Grid. Playback order stays numbered;
@@ -141,7 +167,7 @@ physical input access separately.
    **Apply selection**. Choose whether to capture keyboard, buttons/wheel,
    and mouse movement.
 2. **Record.** Press **F6**, switch to your game during the countdown, and perform
-   the routine. Press **F6** again to finish. Undo can restore the previous routine. Enable **Append to current workflow** in Devices to keep existing actions.
+   the routine. Press **F6** again to finish. Undo can restore the previous routine. Record appends by default; select an action and use **Re-record** to replace just that part.
 3. **Make it yours.** Click a workflow card. Change its key, delay, hold duration,
    or enabled state in **Action**, then click **Apply changes**. Use **Events** for
    individual press/release events and mouse samples.
@@ -164,7 +190,7 @@ physical input access separately.
 | **Notes inspector** | Remember game bindings, starting position and camera direction. |
 
 **Canvas controls:** Ctrl-click adds/removes actions from selection; Shift-click
-selects a range, and Shift-drag on empty canvas box-selects. Scroll horizontally with the mouse wheel; drag the background
+selects a range, and left-drag on empty canvas box-selects. Scroll horizontally with the mouse wheel; middle-drag the background
 to pan; hold **Ctrl** and scroll to zoom. Use **Fit** to reframe the workflow.
 The plus buttons between cards insert an action at that exact point. The Add action
 dialog supports independent Press and Release as well as timed holds. Right-click a
@@ -196,7 +222,7 @@ recovery and common questions.
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste selected actions |
 | Ctrl+D / Ctrl+A | Duplicate / select all, including other pages |
 | Esc | Clear selection |
-| Shift + arrows / Shift-drag | Extend selection / box-select |
+| Shift + arrows / left-drag empty space | Extend selection / box-select |
 | Ctrl+wheel / Ctrl+0 | Zoom / fit |
 | F1 | Workflow shortcut help |
 | ← / → on the canvas | Select previous / next action |
@@ -255,7 +281,7 @@ continuing a potentially incomplete recording.
 
 Click **Settings → Start**, or click the Start marker on the canvas. Set the starting
 countdown, enable **Move to this point before every loop**, enter X/Y, and choose a
-settle delay. **Pick cursor position · 3 s** captures your current desktop position
+settle delay. **Pick position · 3 s** captures your current desktop position
 after a three-second countdown, letting you place the pointer first.
 
 - **X11 desktop:** coordinates are desktop screen pixels. The move is verified.
@@ -263,13 +289,16 @@ after a three-second countdown, letting you place the pointer first.
   monitor scale and negative monitor positions. `hyprctl` is required.
 - **Background X11 window:** coordinates are client pixels relative to the selected
   window, starting at its top-left. This resets the virtual cursor, not your real one.
-- **Other Wayland desktops:** exact desktop reset is unavailable in this release.
-  Relative replay remains available. Studio never silently substitutes an Xwayland
-  warp or approximate absolute-device mapping for a native desktop reset.
+- **Other Wayland desktops, including KDE:** click **Connect Wayland pointer**
+  in Settings → Start and approve pointer control and the monitors in the desktop
+  dialog. A compatible RemoteDesktop/ScreenCast portal is required. Coordinates
+  must be inside approved monitors. No screen frames are opened or saved.
+  Studio never substitutes an Xwayland warp for a native desktop reset.
 
 Reset runs after the initial countdown and before each loop's first action. Held
-inputs are released between loops; then the next reset occurs. If a real move is
-rejected or the point is outside the target, playback stops before sending keys.
+inputs are released between loops; then the next reset occurs. Invalid coordinates
+or reported movement errors stop playback before keys. Portal calls acknowledge
+requests; game acceptance still requires testing on your desktop.
 Test mode simulates the reset without moving anything. A cursor point does not reset
 your character, camera or game state. See [platform implementation notes](docs/POINTER.md).
 

@@ -116,7 +116,8 @@ def test_record_stop_handoff_can_be_undone(qtbot, tmp_path, monkeypatch):
     win.recorder.feed(InputEvent(0, 0, ecodes.EV_KEY, ecodes.KEY_A, 1))
     win.stop()
     assert not win.busy
-    assert [s.action for s in win.model.steps] == ["key_down", "wait", "key_up"]
+    assert win.model.steps[: len(before)] == before
+    assert [s.action for s in win.model.steps[len(before) :]] == ["key_down", "wait", "key_up"]
     assert storage.load(win.recovery_path).steps == win.model.steps
     win.undo.undo()
     assert win.model.steps == before

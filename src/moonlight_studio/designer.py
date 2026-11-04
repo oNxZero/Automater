@@ -114,6 +114,8 @@ def build_ui(w):
         ("Select all\tCtrl+A", "select_all"),
         ("Delete\tDelete", "delete"),
         ("Randomize selected timing…", "randomize"),
+        ("Re-record selected actions…", "rerecord"),
+        ("Show pointer path…", "preview_pointer"),
         ("Keyboard shortcuts\tF1", "help"),
     ):
         action = edit_menu.addAction(title)
@@ -145,6 +147,18 @@ def build_ui(w):
     w.title_row.addLayout(titles, 1)
     w.settings_btn = button("Settings", lambda: w.show_inspector(1), "ghost", glyph="settings")
     body.addWidget(w.workspace_header)
+    w.preview_banner = QFrame()
+    preview = QHBoxLayout(w.preview_banner)
+    preview.setContentsMargins(8, 0, 8, 0)
+    preview.addWidget(
+        label("Test mode · workflow preview only. Your mouse and keyboard will not move."), 1
+    )
+    w.real_inputs_btn = button(
+        "Use real inputs", lambda: w.test_mode.setChecked(False), "ghost", glyph="play"
+    )
+    preview.addWidget(w.real_inputs_btn)
+    w.preview_banner.hide()
+    body.addWidget(w.preview_banner)
     w.countdown_banner = QFrame()
     w.countdown_banner.setObjectName("hero")
     countdown = QHBoxLayout(w.countdown_banner)
@@ -311,6 +325,15 @@ def build_ui(w):
     w.stop_btn = button("Stop · F12", w.stop, "stop", "Emergency stop · F12", "stop")
     for widget in (w.record_btn, w.play_btn, w.pause_btn, w.stop_btn):
         row.addWidget(widget)
+    w.cancel_capture_btn = button(
+        "Discard",
+        lambda: w.stop(discard_recording=True),
+        "ghost",
+        "Discard this recording and keep existing actions",
+        "undo",
+    )
+    w.cancel_capture_btn.hide()
+    row.addWidget(w.cancel_capture_btn)
     w.run_state = label("", "muted")
     row.addWidget(w.run_state)
     w.status = label("Ready", "status")
@@ -410,6 +433,8 @@ def build_start_settings(w):
     layout.addWidget(w.start_enabled)
     w.start_capability = label("")
     layout.addWidget(w.start_capability)
+    w.portal_connect_btn = button("Connect Wayland pointer", w.connect_pointer, glyph="target")
+    layout.addWidget(w.portal_connect_btn)
     form = QFormLayout()
     form.setRowWrapPolicy(QFormLayout.WrapLongRows)
     w.start_x, w.start_y = QSpinBox(), QSpinBox()
@@ -427,6 +452,12 @@ def build_start_settings(w):
     layout.addLayout(form)
     w.pick_position_btn = button("Pick position · 3 s", w.pick_position, glyph="target")
     layout.addWidget(w.pick_position_btn)
+    w.pick_screen_btn = button("Choose on screen", w.pick_screen_point, glyph="select")
+    layout.addWidget(w.pick_screen_btn)
+    w.preview_start_btn = button(
+        "Show starting point", w.preview_start_point, "ghost", glyph="target"
+    )
+    layout.addWidget(w.preview_start_btn)
     layout.addWidget(
         label(
             "The cursor moves first, settles, then the action sequence begins. Background mode uses window-relative coordinates and does not move your real cursor."
@@ -499,7 +530,11 @@ def build_setup(w):
     w.append_recording = QCheckBox("Append to current workflow")
     capture.addSpacing(12)
     capture.addWidget(w.append_recording)
-    capture.addWidget(label("Otherwise, a new recording replaces the actions. Undo restores them."))
+    capture.addWidget(
+        label(
+            "Recording adds to the end by default. To replace an action, select it and choose Re-record. Replacing the entire workflow asks first."
+        )
+    )
     capture.addStretch()
     capture.addWidget(label("F6 records or finishes. F7 runs. F8 pauses. F12 stops."))
     capture.addWidget(button("Input access help", w.show_help, "ghost", glyph="info"))
