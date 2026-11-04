@@ -10,3 +10,5 @@ dist/
 .coverage
 htmlcov/
 .DS_Store
+# Local recordings may contain personal input. Keep root workflows off GitHub.
+/*.json

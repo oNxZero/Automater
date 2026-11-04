@@ -1,4 +1,4 @@
-include start.sh requirements.lock
-recursive-include docs *.md *.png
-recursive-include docs *.svg *.gif
-recursive-include examples *.json
+include LICENSE README.md CONTRIBUTING.md SECURITY.md requirements.lock start.sh
+recursive-include docs *.md *.png *.svg *.gif
+include examples/input-controls.json examples/movement-and-interaction.json
+global-exclude *.py[cod] *.log

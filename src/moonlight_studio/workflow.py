@@ -6,7 +6,7 @@ from bisect import bisect_right
 from dataclasses import dataclass
 
 from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox,
     QGraphicsItem,
@@ -26,7 +26,7 @@ from .connections import FlowConnection, connection_state
 from .editor import editing_command
 from .group_canvas import GroupCanvasMixin
 from .run_feedback import block_state
-from .theme import COLORS, MUTED, TEXT, font, icon
+from .theme import COLORS, MUTED, TEXT, font, icon, paint_color, shadow_color
 from .workflow_drag import WorkflowDragMixin
 
 VIRTUALIZE_AFTER = 160
@@ -162,7 +162,7 @@ class Node(QGraphicsObject):
 
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.Antialiasing)
-        color = QColor(
+        color = paint_color(
             {
                 "completed": "#75d6c0",
                 "last": "#83b8f2",
@@ -172,28 +172,28 @@ class Node(QGraphicsObject):
         )
         rect = QRectF(0, 0, CARD_WIDTH, CARD_HEIGHT)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(5, 7, 15, 70))
+        painter.setBrush(shadow_color())
         painter.drawRoundedRect(rect.translated(0, 6), 12, 12)
         gradient = QLinearGradient(0, 0, CARD_WIDTH, CARD_HEIGHT)
-        gradient.setColorAt(0, QColor("#25283c" if self.isSelected() else "#222738"))
-        gradient.setColorAt(1, QColor("#1c2030"))
+        gradient.setColorAt(0, paint_color("#25283c" if self.isSelected() else "#222738"))
+        gradient.setColorAt(1, paint_color("#1c2030"))
         border = (
             color
             if self.isSelected() or self.playing or self.execution_state
-            else QColor("#55566f" if self.hovered else "#353b50")
+            else paint_color("#55566f" if self.hovered else "#353b50")
         )
         painter.setPen(QPen(border, 2 if self.isSelected() or self.playing else 1))
         painter.setBrush(gradient)
         painter.drawRoundedRect(rect, 12, 12)
         if self.emphasis:
-            glow = QColor(color)
+            glow = paint_color(color)
             glow.setAlpha(round(22 * self.emphasis))
             painter.setBrush(glow)
             painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(rect, 12, 12)
         if not self.block.enabled:
             painter.setOpacity(0.45)
-        tint = QColor(color)
+        tint = paint_color(color)
         tint.setAlpha(30)
         painter.setBrush(tint)
         painter.setPen(Qt.NoPen)
@@ -203,25 +203,25 @@ class Node(QGraphicsObject):
             name = "press"
         elif self.block.title.startswith("Release "):
             name = "release"
-        painter.drawPixmap(22, 22, icon(name, color.name()).pixmap(21, 21))
+        painter.drawPixmap(22, 22, icon(name, color.name(), resolved=True).pixmap(21, 21))
         painter.setFont(font(8, True))
-        painter.setPen(QColor(MUTED))
+        painter.setPen(paint_color(MUTED))
         painter.drawText(
             QRectF(58, 17, 126, 28),
             Qt.AlignVCenter | Qt.AlignRight,
             f"{getattr(self, 'preview_index', self.index) + 1:02d}  ·  {self.execution_state.upper() if self.execution_state else 'SKIPPED' if not self.block.enabled else self.block.kind.upper()}",
         )
         painter.setFont(font(11, True))
-        painter.setPen(QColor(TEXT))
+        painter.setPen(paint_color(TEXT))
         painter.drawText(
             QRectF(16, 62, 174, 24),
             Qt.AlignVCenter,
             painter.fontMetrics().elidedText(self.block.title, Qt.ElideRight, 174),
         )
         painter.setFont(font(9))
-        painter.setPen(QColor("#a0aac5"))
+        painter.setPen(paint_color("#a0aac5"))
         painter.drawText(QRectF(16, 88, 174, 20), Qt.AlignVCenter, self.block.detail)
-        painter.setPen(QPen(QColor("#32384c"), 1))
+        painter.setPen(QPen(paint_color("#32384c"), 1))
         painter.drawLine(16, 115, 188, 115)
         painter.setFont(font(8))
         painter.setPen(color)
@@ -231,7 +231,7 @@ class Node(QGraphicsObject):
             Qt.AlignVCenter,
             "Playing…" if self.playing else f"{count} event{'s' if count != 1 else ''}",
         )
-        painter.setPen(QColor("#929bb6"))
+        painter.setPen(paint_color("#929bb6"))
         painter.drawText(
             QRectF(78, 119, 110, 18),
             Qt.AlignVCenter | Qt.AlignRight,
@@ -343,11 +343,11 @@ class OriginMarker(QGraphicsObject):
 
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(QPen(QColor("#8f84b3"), 1.5, Qt.DashLine))
+        painter.setPen(QPen(paint_color("#8f84b3"), 1.5, Qt.DashLine))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(QRectF(0, 0, CARD_WIDTH, CARD_HEIGHT), 12, 12)
         painter.setFont(font(8, True))
-        painter.setPen(QColor("#c4b3ef"))
+        painter.setPen(paint_color("#c4b3ef"))
         painter.drawText(QRectF(0, -26, CARD_WIDTH, 24), Qt.AlignCenter, "Original position")
 
 
@@ -363,10 +363,10 @@ class InsertPoint(QGraphicsObject):
 
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(QPen(QColor("#49506b"), 1))
-        painter.setBrush(QColor("#202638"))
+        painter.setPen(QPen(paint_color("#49506b"), 1))
+        painter.setBrush(paint_color("#202638"))
         painter.drawEllipse(QPointF(0, 0), 10, 10)
-        painter.setPen(QPen(QColor("#b1a5d4"), 1.4))
+        painter.setPen(QPen(paint_color("#b1a5d4"), 1.4))
         painter.drawLine(-4, 0, 4, 0)
         painter.drawLine(0, -4, 0, 4)
 
@@ -387,11 +387,11 @@ class StartPoint(QGraphicsObject):
 
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QColor("#28273d"))
-        painter.setPen(QPen(QColor("#8e7abb"), 1.5))
+        painter.setBrush(paint_color("#28273d"))
+        painter.setPen(QPen(paint_color("#8e7abb"), 1.5))
         painter.drawEllipse(QPointF(0, 0), 20, 20)
         painter.drawPixmap(-10, -10, icon("target", "#c5b7ed").pixmap(20, 20))
-        painter.setPen(QColor(MUTED))
+        painter.setPen(paint_color(MUTED))
         painter.setFont(font(8, True))
         painter.drawText(QRectF(-55, 26, 110, 20), Qt.AlignCenter, self.canvas.start_label)
 
@@ -460,8 +460,8 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         self.verticalScrollBar().valueChanged.connect(self.queue_visible_nodes)
 
     def drawBackground(self, painter, rect):
-        painter.fillRect(rect, QColor("#131724"))
-        painter.setPen(QPen(QColor("#293044"), 1))
+        painter.fillRect(rect, paint_color("#131724"))
+        painter.setPen(QPen(paint_color("#293044"), 1))
         spacing = 24
         left, top = (
             math.floor(rect.left() / spacing) * spacing,
@@ -717,7 +717,7 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
                 "FINISH",
                 font(8, True),
             )
-            text.setBrush(QColor(MUTED))
+            text.setBrush(paint_color(MUTED))
             text.setPos(b + QPointF(-20, 12))
             items.append(text)
         return items

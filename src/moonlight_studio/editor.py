@@ -3,7 +3,7 @@ from copy import deepcopy
 from dataclasses import replace
 
 from PySide6.QtCore import QAbstractTableModel, Qt, Signal
-from PySide6.QtGui import QColor, QUndoCommand, QUndoStack
+from PySide6.QtGui import QUndoCommand, QUndoStack
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from .models import ACTIONS, KEY_CODES, MAX_STEPS, Script
+from .theme import paint_color
 
 FIELDS = ("enabled", "delay_ms", "action", "code", "x", "y", "delay_max_ms")
 HEADERS = (
@@ -42,7 +43,6 @@ class Change(QUndoCommand):
 
 class StepModel(QAbstractTableModel):
     changed = Signal()
-    beforeChange = Signal()
     inputChanged = Signal()
     invalid = Signal(str)
 
@@ -55,6 +55,7 @@ class StepModel(QAbstractTableModel):
         self.undo = undo
         self.playing_row = -1
         self.execution_trace = None
+        self.change_guard = lambda: True
 
     def replace(self, steps, groups=None):
         self.last_runtime_changed = len(steps) != len(self.steps) or any(
@@ -74,10 +75,12 @@ class StepModel(QAbstractTableModel):
             self.inputChanged.emit()
 
     def commit(self, steps, text, groups=None):
-        self.beforeChange.emit()
+        if not self.change_guard():
+            self.invalid.emit("Finish the current group name/notes before editing actions")
+            return False
         if len(steps) > MAX_STEPS:
             self.invalid.emit(f"At most {MAX_STEPS:,} steps are supported")
-            return
+            return False
         source = self.groups if groups is None else groups
         used = {step.group_id for step in steps if step.group_id}
         groups = {key: value for key, value in source.items() if key in used}
@@ -85,9 +88,10 @@ class StepModel(QAbstractTableModel):
             Script(steps=list(steps), groups=groups).validate()
         except ValueError as exc:
             self.invalid.emit(str(exc))
-            return
+            return False
         if steps != self.steps or groups != self.groups:
             self.undo.push(Change(self, steps, text, groups))
+        return True
 
     def rowCount(self, parent=None):
         return 0 if parent is not None and parent.isValid() else len(self.steps)
@@ -115,18 +119,20 @@ class StepModel(QAbstractTableModel):
                 return "Fixed"
             return round(value, 3) if isinstance(value, float) else value
         if role == Qt.BackgroundRole and index.row() == self.playing_row:
-            return QColor("#364463")
+            return paint_color("#364463")
         if role == Qt.BackgroundRole and self.execution_trace:
             trace = self.execution_trace
             if trace["phase"] == "finished":
                 if index.row() == trace["failed_row"]:
-                    return QColor("#593245")
+                    return paint_color("#593245")
                 if index.row() == trace["last_activity_row"]:
-                    return QColor("#2b4059" if index.row() <= trace["completed_row"] else "#54452d")
+                    return paint_color(
+                        "#2b4059" if index.row() <= trace["completed_row"] else "#54452d"
+                    )
             if step.runnable and index.row() <= trace["completed_row"]:
-                return QColor("#243e39")
+                return paint_color("#243e39")
         if role == Qt.ForegroundRole and not step.enabled:
-            return QColor("#7d859f")
+            return paint_color("#7d859f")
 
     def flags(self, index):
         if not index.isValid() or not 0 <= index.row() < len(self.steps):
@@ -152,8 +158,7 @@ class StepModel(QAbstractTableModel):
             step = replace(old, **values)
             steps = list(self.steps)
             steps[index.row()] = step
-            self.commit(steps, "Edit step")
-            return True
+            return self.commit(steps, "Edit step")
         except (ValueError, TypeError) as exc:
             self.invalid.emit(str(exc))
             return False

@@ -1,8 +1,10 @@
 """Temporary pointer guides. Preview windows never emit input or capture the mouse."""
 
 from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QApplication, QWidget
+
+from .theme import paint_color
 
 
 def pointer_path(steps, origin, limit=1500):
@@ -63,9 +65,9 @@ class PointerOverlay(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setOpacity(self.opacity)
         if self.picking:
-            painter.fillRect(self.rect(), QColor(12, 14, 24, 60))
+            painter.fillRect(self.rect(), paint_color(12, 14, 24, 60))
         origin = self.screen_geometry.topLeft()
-        painter.setPen(QPen(QColor("#b5a4fa"), 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.setPen(QPen(paint_color("#b5a4fa"), 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         if self.points:
             path = QPainterPath(self.points[0] - origin)
             for point in self.points[1:]:
@@ -76,7 +78,7 @@ class PointerOverlay(QWidget):
             )
             for index, point in enumerate(markers):
                 p = point - origin
-                painter.setBrush(QColor("#75d6c0" if index == 0 else "#b5a4fa"))
+                painter.setBrush(paint_color("#75d6c0" if index == 0 else "#b5a4fa"))
                 painter.drawEllipse(p, 8, 8)
                 painter.drawText(
                     QRectF(p.x() + 14, p.y() - 12, 220, 30),
@@ -96,9 +98,9 @@ class PointerOverlay(QWidget):
             text = f"{global_point.x():.0f}, {global_point.y():.0f} · Click to choose · Esc cancels"
         box = QRectF(24, 24, min(680, self.width() - 48), 46)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#202336"))
+        painter.setBrush(paint_color("#202336"))
         painter.drawRoundedRect(box, 12, 12)
-        painter.setPen(QColor("#e2e5f4"))
+        painter.setPen(paint_color("#e2e5f4"))
         painter.drawText(box.adjusted(16, 0, -16, 0), Qt.AlignVCenter, text)
 
     def mouseMoveEvent(self, event):

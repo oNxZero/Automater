@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible problem in Studio
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Studio version
+      placeholder: 0.10.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Linux desktop and session
+      placeholder: KDE Plasma, Wayland; Python and Qt versions if known
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Where does the problem happen?
+      options:
+        - Editor or file management
+        - Recording
+        - Test mode
+        - Active desktop playback
+        - Background window · X11
+        - Separate game session · Gamescope
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps and expected result
+      description: Describe a small reproduction, what you expected and what happened. Use synthetic actions instead of personal recordings.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Optional diagnostics or screenshot
+      description: Review doctor output and screenshots for device names, window titles, paths and typed text before sharing.

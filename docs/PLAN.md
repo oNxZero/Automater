@@ -310,3 +310,17 @@ completes the new-document affordance. Metadata edits preserve debug results.
 Regression coverage includes bottom-of-canvas follow, grid resizing, click/drag
 group interaction, invalid-draft tab guards, group notes persistence/copy/Undo and
 scrollable small-window properties. Game input backends are unchanged by this work.
+
+## v0.10: public-preview preparation
+
+Add the Moonlight theme gallery and a Daylight preset through a shared palette,
+including widget styles, icons, canvas, connections and run states. Save appearance
+in Preferences with color validation; preserve portable workflow/group data and
+editor context. Provide local accent/background overrides with automatic contrast.
+
+Audit creation, duplication, grouping subsets, note drafts, focused text Undo,
+blocked file opens and playback validation. Add direct Move/Scroll controls and
+an offline Getting started guide. Prepare a short README, installation/contribution
+guides, issue templates, security reporting and a concrete release checklist.
+Repository publication and hardware/game acceptance require the separate owner
+and physical-desktop steps documented in RELEASE.md.

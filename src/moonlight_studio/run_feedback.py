@@ -130,7 +130,7 @@ class RunFeedbackMixin:
                     if trace["last_activity_row"] >= 0
                     else "no action started"
                 )
-                + " · green: completed · blue: last · amber: stopped · red: failed"
+                + " · completed, last, stopped and failed actions stay marked"
             )
             self.workflow.run_summary.show()
             QTimer.singleShot(

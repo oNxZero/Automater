@@ -88,7 +88,7 @@ class GroupDialog(NameDialog):
             "Name this group",
             name,
             "Group selected actions visually. Their order and playback stay the same.",
-            "Save group",
+            "Apply group",
         )
         self.color = QComboBox()
         self.color.setAccessibleName("Group color")
@@ -100,7 +100,9 @@ class GroupDialog(NameDialog):
             ("Rose", "#f2a3bc"),
         ):
             self.color.addItem(title, value)
-        self.color.setCurrentIndex(max(0, self.color.findData(color)))
+        if self.color.findData(color) < 0:
+            self.color.addItem("Custom color", color)
+        self.color.setCurrentIndex(self.color.findData(color))
         self.layout().insertWidget(self.layout().count() - 1, self.color)
         self.notes = QTextEdit()
         self.notes.setAcceptRichText(False)

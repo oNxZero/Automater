@@ -28,9 +28,14 @@ class Preferences:
     script_directory: str | None = None
     recent_scripts: list[str] = field(default_factory=list)
     library_folders: list[str] = field(default_factory=list)
+    theme: str = "studio"
+    theme_colors: dict[str, str] = field(default_factory=dict)
 
     def validate(self):
         from .models import number
+        from .palettes import validate_appearance
+
+        validate_appearance(self.theme, self.theme_colors)
 
         if self.script_directory is not None and (
             not isinstance(self.script_directory, str)

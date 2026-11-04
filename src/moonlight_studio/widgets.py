@@ -92,6 +92,8 @@ def button(text, callback, name="", tip="", glyph=None):
         widget.setFixedWidth(36)
         widget.setAccessibleName(tip)
     if glyph:
+        widget.setProperty("themeGlyph", glyph)
+        widget.setProperty("themeTone", name)
         widget.setIcon(
             icon(
                 glyph,

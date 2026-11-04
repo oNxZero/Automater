@@ -4,10 +4,11 @@ import time
 from bisect import bisect_right
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QGraphicsPathItem
 
 from .run_feedback import block_state
+from .theme import paint_color
 
 COLORS = {
     "": "#5d5877",
@@ -59,7 +60,7 @@ class FlowConnection(QGraphicsPathItem):
         super().__init__(path)
         self.arrow = arrow
         self.state = ""
-        self.setPen(QPen(QColor(COLORS[""]), 2))
+        self.setPen(QPen(paint_color(COLORS[""]), 2))
         self.setAcceptedMouseButtons(Qt.NoButton)
         self.setZValue(-3)
 
@@ -69,22 +70,22 @@ class FlowConnection(QGraphicsPathItem):
     def set_state(self, state):
         if state != self.state:
             self.state = state
-            self.setPen(QPen(QColor(COLORS[state]), 2))
+            self.setPen(QPen(paint_color(COLORS[state]), 2))
             self.update()
 
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.Antialiasing)
-        color = QColor(COLORS[self.state])
+        color = paint_color(COLORS[self.state])
         painter.setPen(QPen(color, 2.2 if self.state else 1.5))
         painter.drawPath(self.path())
         painter.drawPath(self.arrow)
         if self.state == "running":
-            pen = QPen(QColor("#eee6ff"), 2.5, Qt.CustomDashLine)
+            pen = QPen(paint_color("#eee6ff"), 2.5, Qt.CustomDashLine)
             pen.setDashPattern([3, 7])
             pen.setDashOffset((-time.monotonic() * 18) % 10)
             painter.setPen(pen)
             painter.drawPath(self.path())
             point = self.path().pointAtPercent((time.monotonic() * 0.65) % 1)
             painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor("#eee6ff"))
+            painter.setBrush(paint_color("#eee6ff"))
             painter.drawEllipse(point, 2.8, 2.8)

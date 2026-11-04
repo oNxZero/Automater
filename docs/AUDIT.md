@@ -123,6 +123,32 @@ The grouping rectangle encloses its members' bounds. A nonadjacent group can
 visually contain unselected cards; those cards are not added to the group. This is
 a visual annotation, not a nested execution scope. Physical compositor/game input
 acceptance remains outside these UI regressions.
+
+## v0.10 creation and public-preview audit
+
+| Finding | Fix |
+| --- | --- |
+| Theme colors only existed as fixed dark literals | Central palette mapping for widgets, canvas, connections, icons, event marks and preview; eleven gallery presets and local accent/background overrides. Daylight includes readable assets and softer shadows. |
+| Custom backgrounds could reduce text contrast | Automatically choose text/subtext colors meeting 4.5:1 against the background; group labels keep contrast without changing saved group colors. |
+| Theme changes could discard the editing context | Repaint without rebuilding events/scene or changing document state. Verify selection, caret, Undo, notes and run results remain intact. Lock the gallery during capture/playback. |
+| Add Move/Scroll required another edit just to enter values | Include relative X/Y and signed scroll notches in the creation dialog, with units/direction explained. |
+| Grouping a subset renamed the entire existing category | Give the subset an independent identity, retaining the other members' name, color and notes. |
+| Opening the group dialog replaced custom imported colors | Retain a Custom color entry instead of selecting the first preset. |
+| Ctrl+Z in text could invoke document Undo | Route focused text fields to their native history; canvas and toolbar use workflow Undo. |
+| Invalid note drafts could be discarded by deleting group members or starting capture | Guard model commits, deletion and recording before any mutation/device setup; preserve the draft and show validation feedback. Clear failed pending selection changes. |
+| An incomplete group name prevented quitting without a discard choice | Quit offers Save/Discard/Keep editing for the unserializable draft. Discard closes that workflow; Cancel retains its text. |
+| Open/example commands claimed success despite a blocked document switch | Return actual load success and update recent files, status and Test mode only after successful activation. |
+| Every new unsaved tab had the same title | Use distinct Untitled workflow names until renamed/saved. |
+| Failed playback validation cleared previous results | Keep last-run feedback until a new replay actually starts. |
+| Notes said Saved before the JSON was written | Use Applying/Applied and an Apply notes button; explicitly explain that Ctrl+S saves the file. |
+| Clearing an imported description hid the editor and its Undo | Keep the empty description editor visible while it retains focus. |
+| Onboarding depended on a long release-history README | Provide an offline Quick guide; shorten README, separate installation instructions and archive earlier feature notes. |
+| Local recordings could accidentally enter a public repository | Ignore root JSON recordings; verify history and source/wheel contents; use synthetic screenshot/test data. |
+
+The native Qt visual pass also caught theme gallery cards compressed below their
+label height and double-mapped icon colors in Daylight; both have regressions.
+Publication and real game/compositor acceptance remain owner/manual checks in
+[RELEASE](RELEASE.md). This audit does not claim that every possible bug is gone.
 | Save prompt and unsaved badge did not match the workspace | Custom save dialog with explicit choices and safe cancellation; badge beside the title summary, with long summaries elided instead of wrapping. |
 | Selected foreground apps stopped immediately when unfocused | Restore/focus the chosen window after countdown, before input, with an opt-out. Identity/focus checks and cleanup remain active. Background input still requires a supported background route. |
 | Empty properties retained a stale action caption | Clear the caption and close action properties on explicit deselection. |

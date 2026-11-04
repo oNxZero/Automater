@@ -58,12 +58,12 @@ class GroupNotesInspector(QWidget):
         fields.addWidget(self.name)
         fields.addWidget(self.color)
         fields.addWidget(self.text, 1)
-        self.status = label("Changes save automatically · Ctrl+Z to undo")
+        self.status = label("Changes apply automatically · Ctrl+S saves the file")
         # Keep two lines available for status text so switching between the
         # initial hint, Saving and Saved cannot resize the editor while typing.
         self.status.setMinimumHeight(36)
         fields.addWidget(self.status)
-        self.save = button("Save group notes", self.flush, "primary", glyph="check")
+        self.save = button("Apply notes", self.flush, "primary", glyph="check")
         fields.addWidget(self.save)
         fields.addWidget(
             button(
@@ -89,7 +89,9 @@ class GroupNotesInspector(QWidget):
         self.select(None, None)
 
     def update_imported(self):
-        visible = self.identity is None and bool(self.imported_notes.toPlainText())
+        visible = self.identity is None and (
+            bool(self.imported_notes.toPlainText()) or self.imported_notes.hasFocus()
+        )
         self.imported_label.setVisible(visible)
         self.imported_notes.setVisible(visible)
 
@@ -126,7 +128,7 @@ class GroupNotesInspector(QWidget):
         if not same_group:
             # Reloading this longer hint during a save can briefly wrap it,
             # resize the text editor and clamp its scroll position.
-            self.status.setText("Changes save automatically · Ctrl+Z to undo")
+            self.status.setText("Changes apply automatically · Ctrl+S saves the file")
         self.update_imported()
 
     def changed(self, *_):
@@ -136,7 +138,9 @@ class GroupNotesInspector(QWidget):
         valid = bool(self.name.text().strip()) and len(self.text.toPlainText()) <= 20000
         self.save.setEnabled(valid)
         self.status.setText(
-            "Saving…" if valid else "Give the group a name and keep notes within 20,000 characters."
+            "Applying…"
+            if valid
+            else "Give the group a name and keep notes within 20,000 characters."
         )
         self.timer.start()
         self.draftChanged.emit()
@@ -154,5 +158,5 @@ class GroupNotesInspector(QWidget):
             self.color.currentData(),
             self.text.toPlainText(),
         )
-        self.status.setText("Saved · Ctrl+Z to undo")
+        self.status.setText("Applied · Ctrl+S saves the file")
         return True

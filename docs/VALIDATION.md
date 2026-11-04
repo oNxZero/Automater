@@ -1,11 +1,11 @@
-# Verification of v0.9.1
+# Verification of v0.10.0
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
 Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **261 automated tests passed**, including offscreen Qt workflows and five live X11
+- **298 automated tests passed**, including offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Reproduced a Qt/PySide6 6.12.0 reference-count crash during repeated painting on
@@ -253,3 +253,35 @@ messages now reserve two lines so initial/Saving/Saved feedback cannot resize th
 editor during typing. Refreshing the same group retains its current save status
 instead of temporarily restoring the longer initial hint. The regression also
 verifies the text viewport keeps its size.
+
+## v0.10 creation, themes and public-preview checks
+
+- Both Python 3.11 and 3.14 pass 298 tests, including 37 new audit/theme cases.
+  Each of the eleven palettes renders the native Qt window and meets 4.5:1 text
+  contrast for normal background/panel text and primary-button labels. Custom
+  light, gray, dark and warm backgrounds verify automatic text/subtext contrast.
+- Theme tests preserve input data, groups, notes, selection, editing cursor and
+  Undo history across live changes and restore preferences on restart. Daylight
+  checks cover canvas colors, readable SVG assets/group labels and icon colors.
+  Active playback locks appearance controls. Gallery label height is regressed.
+- Creation/editing checks cover direct signed movement/scroll input, subset-group
+  independence and Undo, custom imported group colors, duplicate order and copied
+  group identities/notes, distinct new-document names, native text Ctrl+Z, protected
+  invalid drafts, truthful blocked file/example handling and retained run marks
+  after failed playback validation. Clearing an imported description keeps Undo.
+  Quit permits Discard/Keep editing for an invalid draft instead of trapping the user.
+- Actual native screenshots were inspected at 1440×920 and 1000×680, including
+  [Studio](editor.png), [the gallery](themes.png), [Daylight](daylight.png) and the
+  group panel. The pass found compressed gallery labels and double-mapped icons;
+  these were fixed before release. No generated mockups are used.
+- The README now describes current flows; earlier feature history is archived.
+  Local documentation links resolve. The wheel includes the new modules and light
+  assets; the source archive also includes contribution/security/install guides,
+  launcher, lock file and two synthetic examples. Runtime doctor works without
+  a GUI. Git history contains only the two synthetic example JSON files; personal
+  root recordings are ignored and excluded from distributions.
+- GitHub action release tags were verified through the upstream repositories and
+  updated to checkout/setup-python v7. The full CI matrix is run before completion.
+  The repository remains private; publication is an owner decision documented in
+  [RELEASE](RELEASE.md). Physical device/compositor/game/GPU checks listed there
+  remain manual and are not established by these tests.

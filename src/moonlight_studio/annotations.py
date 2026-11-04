@@ -47,6 +47,12 @@ class AnnotationsMixin:
         identities = {self.model.steps[row].group_id for row in rows}
         identity = next(iter(identities)) if len(identities) == 1 else ""
         previous = self.model.groups.get(identity, {})
+        if identity and set(rows) != {
+            i for i, step in enumerate(self.model.steps) if step.group_id == identity
+        }:
+            identity = (
+                ""  # Grouping a subset creates a new category; it cannot rename other members.
+            )
         if name is None:
             dialog = GroupDialog(
                 self,

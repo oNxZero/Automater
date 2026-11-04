@@ -338,6 +338,9 @@ class EditingMixin:
     def delete(self):
         if self.busy:
             return
+        if not self.group_inspector.flush():
+            self.show_error("Finish the current group name/notes before deleting actions")
+            return
         rows = set(self.selected_rows())
         if not rows:
             return

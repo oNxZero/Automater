@@ -174,20 +174,20 @@ class DocumentsMixin:
 
     def load_script(self, script, path=None, recovery=None):
         if self.busy:
-            return
+            return False
         script = script.validate().migrate_note_cards()
         if not self.stash_document():
-            return
+            return False
         if path is not None:
             path = Path(path)
             for index in range(self.document_tabs.count()):
                 doc = self.documents[self.document_id(index)]
                 if doc.path is not None and doc.path.resolve() == path.resolve():
                     self.document_tabs.setCurrentIndex(index)
-                    return
+                    return self.active_document_id == self.document_id(index)
         if len(self.documents) >= 64:
             self.show_error("Close a workflow tab before opening more (64 tabs maximum)")
-            return
+            return False
         identifier = uuid4().hex
         stack = QUndoStack(self)
         stack.setUndoLimit(50)
@@ -208,6 +208,7 @@ class DocumentsMixin:
         self.document_tabs.setCurrentIndex(index)
         self.document_tabs.blockSignals(False)
         self.activate_document(index, stash=False)
+        return True
 
     def activate_document(self, index, stash=True):
         identifier = self.document_id(index)
@@ -326,7 +327,12 @@ class DocumentsMixin:
 
     def confirm_close_documents(self):
         if not self.stash_document():
-            return False
+            # An incomplete group draft cannot be serialized, but Quit must
+            # still offer the normal Save/Discard/Keep editing choice.
+            identifier = self.active_document_id
+            self.close_document(self.document_tabs.currentIndex())
+            if identifier in self.documents or not self.stash_document():
+                return False
         for index in range(self.document_tabs.count()):
             self.document_tabs.setCurrentIndex(index)
             if not self.confirm_discard():

@@ -1,10 +1,145 @@
 """Shared native Qt design tokens and small original vector icons."""
 
+import re
+from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray
-from PySide6.QtGui import QFont, QIcon, QPixmap
+from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
+
+from .palettes import PALETTES, validate_appearance
+
+_theme_name = "studio"
+_overrides = {}
+
+
+def mix(a, b, amount):
+    a, b = QColor(a), QColor(b)
+    amount = max(0, min(1, amount))
+    return QColor.fromRgbF(
+        *(x + (y - x) * amount for x, y in zip(a.getRgbF()[:3], b.getRgbF()[:3]))
+    ).name()
+
+
+def luminance(value):
+    components = QColor(value).getRgbF()[:3]
+    channels = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in components]
+    return sum(c * w for c, w in zip(channels, (0.2126, 0.7152, 0.0722)))
+
+
+def contrast(a, b):
+    low, high = sorted((luminance(a), luminance(b)))
+    return (high + 0.05) / (low + 0.05)
+
+
+def palette(name=None, overrides=None):
+    name = _theme_name if name is None else name
+    overrides = _overrides if overrides is None else overrides
+    validate_appearance(name, overrides)
+    result = PALETTES[name]
+    if "base" in overrides:
+        base = overrides["base"]
+        light = contrast(base, "#11131e") > contrast(base, "#ffffff")
+        reference = (
+            PALETTES["daylight"] if light else PALETTES[name if name != "daylight" else "studio"]
+        )
+        text = reference.text
+        if contrast(text, base) < 4.5:
+            text = max(("#000000", "#ffffff"), key=lambda color: contrast(color, base))
+        muted = reference.muted
+        for _ in range(24):
+            if contrast(muted, base) >= 4.5:
+                break
+            muted = mix(muted, text, 0.2)
+        result = replace(
+            result,
+            base=base,
+            panel=mix(base, "#ffffff", 0.65) if light else mix(base, reference.accent, 0.07),
+            border=mix(base, "#202639" if light else "#aab3cc", 0.28),
+            text=text,
+            muted=muted,
+            blue=reference.blue,
+            success=reference.success,
+            danger=reference.danger,
+            warning=reference.warning,
+        )
+    if "accent" in overrides:
+        result = replace(result, accent=overrides["accent"])
+    return result
+
+
+def activate(name, overrides=None):
+    global _theme_name, _overrides
+    validate_appearance(name, overrides or {})
+    _theme_name, _overrides = name, dict(overrides or {})
+    resolve_hex.cache_clear()
+    _icon.cache_clear()
+
+
+@lru_cache(maxsize=512)
+def resolve_hex(value):
+    if _theme_name == "studio" and not _overrides:
+        return value
+    p = palette()
+    exact = {
+        "#11131e": p.base,
+        "#1b1e2e": p.panel,
+        "#1c2032": p.panel,
+        "#131724": mix(p.base, p.panel, 0.2),
+        "#e2e5f4": p.text,
+        "#d8ddef": p.text,
+        "#bbc2d9": p.text,
+        "#9199b3": p.muted,
+        "#5d5877": p.muted,
+        "#b5a4fa": p.accent,
+        "#83b8f2": p.blue,
+        "#75d6c0": p.success,
+        "#f2a3bc": p.danger,
+        "#e8c58a": p.warning,
+        "#181424": "#151722"
+        if contrast(p.accent, "#151722") > contrast(p.accent, "#ffffff")
+        else "#ffffff",
+    }
+    for key in ("#201b2e", "#211b30"):
+        exact[key] = exact["#181424"]
+    if value in exact:
+        return exact[value]
+    backgrounds = {
+        "#243e39": p.success,
+        "#593245": p.danger,
+        "#2b4059": p.blue,
+        "#54452d": p.warning,
+        "#364463": p.blue,
+    }
+    if value in backgrounds:
+        return mix(p.panel, backgrounds[value], 0.16)
+    c = QColor(value)
+    if c.valueF() < 0.48:
+        return mix(p.base, p.border, (c.valueF() - 0.10) / 0.35)
+    hue, saturation, brightness, _ = c.getHsvF()
+    if 0.70 < hue < 0.85 and saturation > 0.13:
+        return mix(p.accent, p.text, max(0, brightness - 0.85))
+    return p.text if brightness > 0.83 else p.muted
+
+
+def paint_color(*args):
+    if len(args) == 1 and isinstance(args[0], str) and args[0].startswith("#"):
+        return QColor(resolve_hex(args[0].lower()))
+    return QColor(*args)
+
+
+def legible_group_color(value):
+    """Improve label contrast without changing the group's saved custom color."""
+    background = palette().panel
+    target = "#11131e" if luminance(background) > 0.4 else "#ffffff"
+    color = value
+    for _ in range(12):
+        if contrast(color, background) >= 3:
+            break
+        color = mix(color, target, 0.15)
+    return QColor(color)
+
 
 ACCENT = "#b5a4fa"
 TEXT = "#e2e5f4"
@@ -64,8 +199,16 @@ PATHS = {
 }
 
 
+def icon(name, color=MUTED, size=20, *, resolved=False):
+    return _icon(name, color.lower() if resolved else resolve_hex(color.lower()), size)
+
+
+def shadow_color():
+    return QColor(5, 7, 15, 22 if luminance(palette().text) < luminance(palette().base) else 70)
+
+
 @lru_cache(maxsize=128)
-def icon(name, color=MUTED, size=20):
+def _icon(name, color, size):
     data = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
         f'viewBox="0 0 20 20" color="{color}" fill="none" stroke="{color}" stroke-width="1.8" '
@@ -110,6 +253,7 @@ QLabel#badge { background: #2b2945; color: #c5b8ff; border: 1px solid #443d66;
 QLabel#status { color: #a9b2cd; font-size: 12px; padding: 2px; }
 QPushButton { background: #252a3d; border: 1px solid #373d55; border-radius: 7px;
               padding: 8px 13px; font-weight: 600; min-height: 18px; }
+QPushButton#themeCard { min-height: 82px; min-width: 156px; padding: 0; }
 QPushButton:hover { background: #30354d; border-color: #6e668e; }
 QPushButton:pressed { background: #39354e; }
 QPushButton:focus { border: 1px solid #b5a4fa; }
@@ -184,3 +328,13 @@ QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image: url("@ASSETS@/chevron-up.s
 QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: url("@ASSETS@/chevron-down.svg"); width: 12px; height: 12px; }
 QCheckBox::indicator:checked { image: url("@ASSETS@/check.svg"); }
 """.replace("@ASSETS@", (Path(__file__).parent / "assets").as_posix())
+
+
+def stylesheet():
+    result = re.sub(r"#[0-9a-fA-F]{6}\b", lambda match: resolve_hex(match.group().lower()), STYLE)
+    if luminance(palette().text) < luminance(palette().base):
+        for asset in ("close", "chevron-down", "chevron-up"):
+            result = result.replace(f"/{asset}.svg", f"/{asset}-light.svg")
+    if resolve_hex("#181424") == "#ffffff":
+        result = result.replace("/check.svg", "/check-light.svg")
+    return result

@@ -350,7 +350,7 @@ Grouping never reorders actions, changes timing or adds execution logic.
 
 Click the rectangle's background or heading to select its members and open the
 **Group** panel. Edit its name, color or plain-text notes (up to 20,000 characters).
-Changes save into the document after a short pause; **Save group notes** applies
+Changes apply to the document after a short pause; **Apply notes** applies
 immediately. Save the workflow to write them to its JSON file. **Ctrl+Shift+N**
 opens notes for the selected group, or creates a group for ungrouped actions.
 Dragging across a rectangle still box-selects actions; middle-drag still pans.
@@ -406,6 +406,26 @@ timing. Turn **Follow playback** off to pan
 freely, then turn it on to return to the current action. Shorter-than-frame inputs
 are represented by the latest worker snapshot; the UI cannot display every physical
 event as a separate rendered frame.
+
+## Appearance and the quick guide
+
+Open **File → Appearance & themes**, use the Appearance button in Run settings, or
+press **Ctrl+,**. The gallery includes Studio plus Moonlight, Obsidian, Crimson,
+Dracula, Viper, Nord, Sakura, Solaris, Catppuccin and Daylight. Click a card to apply
+it; accent and background color pickers add local overrides. Choosing another
+gallery card clears the overrides. Reset to Studio restores the original look.
+
+Theme changes preserve actions, input timing, selection, notes, Undo and last-run
+results. Appearance is stored in Preferences, not exported JSON workflows. Group
+colors remain portable; labels are adjusted for contrast. Custom backgrounds
+automatically choose readable text colors. Stop capture/playback before changing
+appearance; the gallery is disabled during active work.
+
+**File → Getting started** and **Quick guide** on the empty canvas explain action
+creation, Hold/Press/Release, selection, duplication, groups, playback destinations
+and saving without requiring a browser. Ctrl+Z inside a text field uses its native
+text history; on the canvas it undoes workflow edits. Toolbar Undo/Redo apply to
+the document. Applying notes changes the document; Ctrl+S saves the JSON file.
 
 Connections follow the same worker snapshot: completed inputs leave colored
 arrows, and a moving stream points toward the current action or next waiting input.

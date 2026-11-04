@@ -6,7 +6,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QGraphicsObject, QMenu
 
-from .theme import font
+from .theme import font, legible_group_color, paint_color
 
 
 class GroupFrame(QGraphicsObject):
@@ -37,17 +37,17 @@ class GroupFrame(QGraphicsObject):
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.Antialiasing)
         color = QColor(self.metadata["color"])
-        border, tint = QColor(color), QColor(color)
+        border, tint = legible_group_color(self.metadata["color"]), QColor(color)
         border.setAlpha(175)
         tint.setAlpha(28)
         painter.setPen(QPen(border, 1.5))
         painter.setBrush(tint)
         painter.drawRoundedRect(self.rect, 12, 12)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#1c2032"))
+        painter.setBrush(paint_color("#1c2032"))
         painter.drawRoundedRect(self.header, 5, 5)
         painter.setFont(font(9, True))
-        painter.setPen(color)
+        painter.setPen(legible_group_color(self.metadata["color"]))
         painter.drawText(
             self.header.adjusted(7, 0, -60, 0),
             Qt.AlignVCenter,

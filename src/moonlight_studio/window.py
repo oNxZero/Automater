@@ -25,12 +25,14 @@ from PySide6.QtWidgets import (
 
 from . import storage, x11
 from .annotations import AnnotationsMixin
+from .appearance import AppearanceMixin
 from .designer import build_ui
 from .dialogs import SaveChangesDialog
 from .documents import DocumentsMixin
 from .editing import EditingMixin
 from .editor import StepModel, editing_command
 from .engine import DryRun, PlaybackOptions, Replay
+from .help_ui import getting_started
 from .isolated import GameSession, IsolatedBackend
 from .library import LibraryMixin
 from .linux_input import DeviceMonitor, Recorder, UInputBackend, devices, diagnostics
@@ -39,7 +41,7 @@ from .open_windows import WindowObserver, discover_windows, guarded_desktop, mat
 from .preferences import Preferences
 from .run_feedback import RunFeedbackMixin
 from .session_ui import SessionMixin
-from .theme import STYLE, icon
+from .theme import icon
 from .visuals import VisualsMixin
 from .window_picker import WindowPicker
 
@@ -69,6 +71,7 @@ def sample():
 
 
 class MainWindow(
+    AppearanceMixin,
     DocumentsMixin,
     AnnotationsMixin,
     LibraryMixin,
@@ -147,6 +150,7 @@ class MainWindow(
         self.undo.setActiveStack(initial_stack)
         self.model = StepModel(initial_stack)
         self.model.invalid.connect(self.show_error)
+        self.model.invalid.connect(lambda _message: setattr(self, "pending_rows", None))
         self.pending_rows = None
         self.script_version = 1
         self.selection_anchor = -1
@@ -157,10 +161,12 @@ class MainWindow(
         self.setWindowTitle("Moonlight Studio")
         self.resize(1240, 800)
         self.setMinimumSize(1000, 680)
-        self.setStyleSheet(STYLE)
+        self.appearance_dialog = None
+        self.apply_appearance(self.preferences.theme, self.preferences.theme_colors, persist=False)
         self.build_ui()
         self.restore_preferences()
-        self.model.beforeChange.connect(self.group_inspector.flush)
+        self.apply_appearance(self.preferences.theme, self.preferences.theme_colors, persist=False)
+        self.model.change_guard = self.group_inspector.flush
         self.model.changed.connect(self.edited)
         self.model.changed.connect(self.refresh_workflow)
         self.model.inputChanged.connect(
@@ -330,8 +336,9 @@ class MainWindow(
             ("Ctrl+O", self.open_script),
             ("Ctrl+S", self.save_script),
             ("Ctrl+Shift+S", self.save_as),
-            ("Ctrl+Z", lambda: self.group_inspector.flush() and self.undo.undo()),
-            ("Ctrl+Shift+Z", lambda: self.group_inspector.flush() and self.undo.redo()),
+            ("Ctrl+,", self.show_appearance),
+            ("Ctrl+Z", self.undo_focused_edit),
+            ("Ctrl+Shift+Z", lambda: self.undo_focused_edit(redo=True)),
         ):
             action = QAction(self)
             action.setShortcut(QKeySequence(key))
@@ -359,6 +366,20 @@ class MainWindow(
                 "space": "window" if self.mode.currentIndex() else "desktop",
             }
         return script.validate()
+
+    def undo_focused_edit(self, redo=False):
+        if self.busy:
+            return
+        focus = QApplication.focusWidget()
+        if isinstance(focus, (QLineEdit, QTextEdit, QPlainTextEdit)):
+            getattr(focus, "redo" if redo else "undo")()
+        elif not self.busy and self.group_inspector.flush():
+            getattr(self.undo, "redo" if redo else "undo")()
+
+    def show_getting_started(self):
+        dialog = getting_started(self)
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.show()
 
     def dirty(self):
         try:
@@ -656,10 +677,17 @@ class MainWindow(
             self.show_error(f"Could not clear recovery file: {exc}")
 
     def new_script(self):
-        self.load_script(Script())
+        names = {doc.script.name for doc in self.documents.values()}
+        names.add(self.name.text().strip())
+        name, number = "Untitled workflow", 2
+        while name in names:
+            name = f"Untitled workflow {number}"
+            number += 1
+        return self.load_script(Script(name))
 
     def load_example(self):
-        self.load_script(sample())
+        if not self.load_script(sample()):
+            return
         self.test_mode.setChecked(True)
         self.status.setText("Example loaded • test mode is on")
 
@@ -674,13 +702,15 @@ class MainWindow(
             + create_action(1, "BTN_LEFT", duration=60)
             + create_action(3)
         )
-        self.load_script(
+        opened = self.load_script(
             Script(
                 "Input controls",
                 "Press E, wait, release E, hold W, click and move. Test mode sends no input.",
                 steps,
             )
         )
+        if not opened:
+            return
         self.test_mode.setChecked(True)
         self.status.setText("Input controls example · Test mode is on · F1 shows shortcuts")
 
@@ -695,13 +725,16 @@ class MainWindow(
         try:
             path = Path(path).expanduser().resolve()
             script = storage.load(path)
-            self.load_script(script, path)
+            if not self.load_script(script, path):
+                return False
             self.remember_script_directory(path.parent)
             self.remember_workflow(path, script)
             self.refresh_library()
             self.status.setText(f"Opened {Path(path).name}")
+            return True
         except (ValueError, OSError) as exc:
             self.show_error(str(exc))
+            return False
 
     def script_dialog_directory(self):
         candidates = [
@@ -796,6 +829,8 @@ class MainWindow(
 
     def update_busy(self, busy):
         self.busy = busy
+        if getattr(self, "appearance_dialog", None):
+            self.appearance_dialog.setEnabled(not busy)
         self.document_tabs.setEnabled(not busy)
         self.new_tab_btn.setEnabled(not busy)
         for widget in (
@@ -1101,6 +1136,9 @@ class MainWindow(
         self.begin_recording(rows)
 
     def begin_recording(self, replace_rows=None):
+        if not self.group_inspector.flush():
+            self.show_error("Finish the current group name/notes before recording")
+            return
         if not any(
             w.isChecked() for w in (self.capture_keys, self.capture_buttons, self.capture_motion)
         ):
@@ -1209,7 +1247,6 @@ class MainWindow(
         if self.busy:
             return
         self.close_overlay()
-        self.clear_run_feedback()
         try:
             script = self.script()
             if (
@@ -1286,6 +1323,7 @@ class MainWindow(
                     self.start_settle.value() / 1000,
                 ),
             )
+            self.clear_run_feedback()
             self.play_btn.setText("Stop · F7")
             self.play_btn.setIcon(icon("stop", "#211b30"))
             self.progress.setValue(0)
