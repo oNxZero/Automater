@@ -1,21 +1,83 @@
+<div align="center">
+
+<img src="docs/logo.svg" width="68" alt="Moonlight Studio" />
+
 # Moonlight Studio
 
-A Python input recorder and visual macro editor for Linux, inspired by
-[Moonlight](https://github.com/oNxZero/Moonlight). Record a routine, edit its timing
-and actions, and replay it with a visible stop control.
+**Turn your routine into a workflow.**
 
-![Moonlight Studio editor](docs/editor.png)
+Record your keyboard and mouse. Shape the sequence visually. Run it your way.
 
-## Run
+![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
+![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
+![Version](https://img.shields.io/badge/Studio-v0.2-75d6c0?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 
-Requires Linux and Python 3.11+. From this directory:
+A native Python desktop app inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
+
+[Get started](#get-started) · [The workspace](#the-workspace) · [User guide](docs/USER_GUIDE.md) · [Compatibility](#background-compatibility) · [Roadmap](docs/PLAN.md)
+
+</div>
+
+![The Moonlight Studio workflow workspace](docs/editor.png)
+
+## A workspace built around your routine
+
+The default view is a **left-to-right workflow**. A key hold becomes a readable
+card. Mouse movements become a path. Waits become pauses you can see and edit.
+Click an action to customize it; drag it to change its place in the sequence.
+Your original input samples and timings stay available in the **Events** view.
+
+| Build naturally | Stay in control | Keep your work |
+| --- | --- | --- |
+| Record with F6 or add actions yourself | Preview without sending inputs | Named workflow library with search |
+| Connected keyboard, mouse, wait and path cards | Speed, repeats, start delay and loop gap | JSON import and export |
+| Click a card to edit its properties | Pause, resume and F12 emergency stop | Atomic saves and autosave recovery |
+| Insert between cards; duplicate or reorder | Watch the active action during replay | Undo / redo up to 50 event edits |
+
+## See it in motion
+
+An actual Test mode run in the native Qt interface. No input is sent.
+
+![Workflow selection and Test mode playback](docs/workflow-demo.gif)
+
+## Get started
+
+**Already have the project?** Close the old app and launch it again:
 
 ```bash
+cd moonlight-studio
 ./start.sh
 ```
 
-The launcher creates a local virtual environment and installs the package on its
-first run. For a manual install:
+**Fresh install:** Linux and Python 3.11+ are required.
+
+```bash
+git clone https://github.com/oNxZero/moonlight-studio.git
+cd moonlight-studio
+./start.sh
+```
+
+The repository is private; cloning requires access to your GitHub account.
+The launcher creates a local virtual environment and installs the tested runtime
+dependencies on its first run. Existing installations load the new UI on restart;
+v0.1 JSON scripts remain compatible.
+
+Want to explore first? No input permissions are needed for the demo:
+
+```bash
+./start.sh --demo
+```
+
+It opens the example with **Test mode** enabled. Press **Run workflow** and watch
+it progress through the cards. To print input/session diagnostics instead:
+
+```bash
+./start.sh --doctor
+```
+
+<details>
+<summary><strong>Manual installation & system dependencies</strong></summary>
 
 ```bash
 python3 -m venv .venv
@@ -23,70 +85,88 @@ python3 -m venv .venv
 .venv/bin/moonlight-studio
 ```
 
-Try the editor without input permissions:
+If evdev needs to compile, install your distribution's Python development headers,
+a compiler, and Linux input headers (Fedora: `python3-devel gcc kernel-headers`;
+Debian/Ubuntu: `python3-dev build-essential`). Qt needs system EGL/OpenGL libraries.
+On a minimal Debian/Ubuntu install, use `libegl1 libopengl0 libgl1 libxkbcommon0
+libxcb-cursor0`. Qt's Wayland plugin is included; X11 uses system XCB libraries.
+Run as your regular user. The [permissions guide](#linux-device-permissions) covers
+physical input access separately.
 
-```bash
-./start.sh --demo
-./start.sh --doctor
-```
+</details>
 
-`--demo` loads an example and enables **Test mode**, which runs the scheduler and
-highlights steps without sending input. `--doctor` prints device/session
-diagnostics without opening the UI. If evdev needs to compile, install your
-distribution's Python development headers, compiler, and Linux input headers
-(Fedora: `python3-devel gcc kernel-headers`; Debian/Ubuntu: `python3-dev build-essential`).
-Qt also needs the system's EGL/OpenGL libraries, even for offscreen rendering.
-On a minimal Debian/Ubuntu installation, install `libegl1 libopengl0 libgl1
-libxkbcommon0 libxcb-cursor0`. Qt's Wayland plugin is included; X11 sessions also
-use the system's XCB libraries.
+## Your first workflow
 
-## What works in v0.1
+1. **Connect.** Open **Setup**, select your keyboard and mouse, and click
+   **Apply / refresh devices**. Choose whether to capture keyboard, buttons/wheel,
+   and mouse movement.
+2. **Record.** Press **F6**, switch to your game during the countdown, and perform
+   the routine. Press **F6** again to finish. Undo can restore the previous routine.
+3. **Make it yours.** Click a workflow card. Change its key, delay, hold duration,
+   or enabled state in **Action**, then click **Apply changes**. Use **Events** for
+   individual press/release events and mouse samples.
+4. **Preview.** Open **Run settings → Run**, enable **Test mode**, and click
+   **Run workflow**. The active action and progress are highlighted without sending input.
+5. **Run.** Turn Test mode off, choose the destination, speed and repetitions, then
+   press **F7**. Keep **F12** handy to stop. Save your workflow for next time.
 
-- Physical keyboard presses/releases, mouse buttons, relative mouse movement, and
-  vertical/horizontal scrolling, with editable delays.
-- Device selection and separate keyboard/button/movement recording filters.
-- A visual table: insert key taps, clicks, waits, motion, or scrolling; edit cells;
-  duplicate, reorder, disable, delete, and undo/redo up to 50 changes.
-- 0.1–10× replay speed, repeat count or “until stopped,” startup countdown, loop gap,
-  pause/resume, and interruptible stop. Held inputs are released during cleanup.
-- Script library, notes, JSON import/export, atomic saves, five-second autosave,
-  explicit recovery, and unsaved-change prompts.
-- **Desktop / uinput** output for Wayland and X11. It sends to the active desktop;
-  focus the game during the start delay.
-- **Background / X11** output to an explicitly selected X11 or Xwayland program
-  window. It does not steal focus, move the real pointer, or fall back to desktop
-  input. This mode is experimental and games can ignore its messages.
+## The workspace
 
-## Record → edit → replay
-
-1. Open **Setup**, check your keyboard/mouse devices, and click **Apply / refresh devices**.
-2. Select capture categories on the right. Click **Record** or press **F6**. Switch
-   to your game during the countdown and perform the routine.
-3. Press **F6** again to finish. Recording replaces the event list; Undo restores
-   the previous list. Recordings include a trailing wait and missing key releases.
-4. Double-click table cells to change their values. Delays occur **before** each
-   enabled step, in milliseconds. Disabling a step also skips its delay. `X` and `Y`
-   are relative mouse deltas or horizontal/vertical scroll notches. Positive wheel
-   Y is up; positive wheel X is right. Key names use Linux `KEY_*` and `BTN_*` codes.
-5. Run **Test mode** to check the sequence. Turn it off for real replay, choose a
-   route, set the repeat/speed controls, and click **Play** or press **F7**.
-6. Use **Save as** to add the script to your library or export it elsewhere.
-
-| Physical shortcut | Action |
+| View | What you do there |
 | --- | --- |
-| F6 | Start / finish recording, or cancel its countdown |
-| F7 | Start / stop playback |
-| F8 | Pause / resume playback |
-| F12 | Stop recording, countdown, or playback |
-| Ctrl+N / Ctrl+O / Ctrl+S | New / open / save in the editor |
+| **Workflow** | Follow your routine from Start to Finish. Select cards, insert at a connector, drag to reorder, zoom and pan. |
+| **Events** | Inspect every original input. Double-click cells to edit precise delays, actions, keys and relative coordinates. |
+| **Library** | Search saved workflows, double-click to open, or import a JSON script. |
+| **Setup** | Check input access, select physical devices, choose capture categories and find permissions help. |
+| **Action inspector** | Edit the selected action, apply changes, duplicate, delete or move it. |
+| **Run inspector** | Choose destination, speed, repeats, countdown, loop gap and Test mode. See estimated duration. |
+| **Notes inspector** | Remember game bindings, starting position and camera direction. |
+
+**Canvas controls:** Scroll horizontally with the mouse wheel; drag the background
+to pan; hold **Ctrl** and scroll to zoom. Use **Fit** to reframe the workflow.
+The plus buttons between cards insert an action at that exact point. Right-click a
+card for duplicate, enable/disable, move and delete. Arrow keys select the previous
+or next action; **Alt + ←/→** reorders it. **Delete** removes the selected card.
+
+**Recording detail stays intact.** Adjacent matching press/release events become
+one hold/click card. Consecutive movement or scroll samples share a card, while
+Events retains every sample. Overlapping key holds stay separate. Large workflows
+use pages of at most 60 cards, keeping the canvas responsive. This is a linear
+sequence; repeat the whole workflow in Run settings. Branches and nested loops
+remain on the roadmap.
+
+Read the [illustrated user guide](docs/USER_GUIDE.md) for timing, grouped-path editing,
+recovery and common questions.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| **F6** | Start / finish recording, or cancel its countdown |
+| **F7** | Start / stop playback |
+| **F8** | Pause / resume playback |
+| **F12** | Stop recording, countdown, or playback |
+| Ctrl+N / Ctrl+O / Ctrl+S | New / import / save |
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo event edits |
+| ← / → on the canvas | Select previous / next action |
+| Alt + ← / → on the canvas | Move the selected action |
+| Delete on the canvas | Delete the selected action |
 
-Global F-keys require a selected, readable physical keyboard. They are reserved and
-excluded from recordings; they still reach the foreground application. The app
-does not grab devices. During replay, the virtual output device is excluded from
-monitoring to prevent feedback. Pause releases held inputs; resume presses those
-logical holds again. Repeat boundaries release all held keys and buttons.
+Global F-keys need a selected, readable physical keyboard. They are reserved and
+excluded from recordings, but still reach the foreground app. Studio does not grab
+devices. Virtual output is excluded from monitoring to prevent feedback. Pause
+releases held inputs; resume presses their logical holds again. Loop boundaries
+release all held keys and buttons.
+
+## Similar tools
+
+Yes—there are other macro recorders and desktop automation tools. For Linux,
+[AutoKey for Wayland](https://autokey-wayland.readthedocs.io/en/latest/) and
+[atbswp](https://github.com/RMPR/atbswp) are relevant comparisons. On Windows,
+[Pulover’s Macro Creator](https://www.macrocreator.com/) offers a recorder and visual
+macro editing; [Macro Recorder](https://www.macrorecorder.com/) supports Windows and
+macOS. See the [comparison and platform notes](docs/ALTERNATIVES.md).
 
 ## Linux device permissions
 

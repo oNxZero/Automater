@@ -1,11 +1,11 @@
-# Verification of v0.1
+# Verification of v0.2
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
 Python 3.14.8, Qt/PySide6 6.12.0, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **58 automated tests passed**, including offscreen Qt workflows and four live X11
+- **70 automated tests passed**, including offscreen Qt workflows and four live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Replay tests cover long-delay cancellation, held-key release, partial-send failure,
@@ -22,15 +22,25 @@ Python 3.14.8, Qt/PySide6 6.12.0, evdev 1.9.3, and python-xlib 0.33.
   during playback, autosave, saving/library refresh, input permission failures,
   cancelled countdown, explicit background targets, unsaved-change cancellation,
   recording handoff and recovery.
+- Twelve workflow tests cover lossless card grouping, overlapping holds, inspector
+  edits to both halves of a key hold, action insertion/reordering/undo, duplicate/
+  disable/delete, grouped mouse timing with original coordinates retained, empty
+  state and navigation, canvas/event selection sync, actual pointer drag reorder,
+  bounded page rendering, and read-only behavior during replay.
 - X11 integration verifies keyboard/modifier state, mouse coordinates, wheel/button
   messages, unchanged focus, two simultaneous Shift keys, changed window identity,
   and background compatibility preflight.
 - `ruff check` and `ruff format --check` pass. Source distribution and wheel build
   successfully with `python -m build`. Runtime dependencies have tested constraints.
-- The actual Qt window was rendered and visually inspected; its screenshot is
-  [editor.png](editor.png). Record/play/pause/stop remain in a fixed transport bar.
-- A 100,000-event editor smoke check loaded in approximately 0.19 s and edited one
-  event in 0.10 s on this sandbox. This is an observation, not a latency guarantee.
+- The actual Qt window was rendered and visually inspected at 1480×900 and 1100×740.
+  Screenshots include [workflow](editor.png), [events](events.png), [run settings](run-settings.png),
+  [guided setup](setup.png) and [welcome](welcome.png). An actual Test mode recording
+  produced [the animated walkthrough](workflow-demo.gif). Record/run/pause/stop
+  remain in a fixed transport bar. Test mode is near the top of Run settings.
+- A 100,000-event mouse recording loaded in approximately 0.31 s and edited one
+  event in 0.22 s on this sandbox. It projected to one path card without deleting
+  samples. Graphics scenes are bounded to 60 cards per page. These measurements
+  are observations, not latency guarantees.
 - `./start.sh --doctor` works and accurately reports the sandbox's missing device
   nodes instead of claiming recording/replay access.
 - GitHub Actions is configured for Python 3.11 and 3.14 on Ubuntu, using Xvfb for
@@ -58,4 +68,4 @@ manual checks remain unverified:
    validate memory usage and timing on the user's actual machine.
 
 Native Wayland background routing, gamepad/absolute input, Windows/macOS, process
-watchdogs, and packaged installers are roadmap work, not verified v0.1 features.
+watchdogs, and packaged installers are roadmap work, not verified v0.2 features.

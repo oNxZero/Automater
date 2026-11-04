@@ -124,6 +124,27 @@ No network functionality, account system, telemetry, or automatic uploads of mac
 - Per-game tested compatibility profiles based on observed behavior. No promise of
   anti-cheat bypass, process cloaking, driver injection, or invisible automation.
 
+## v0.2: visual workspace redesign
+
+The workflow canvas is now the default editing view. It presents the existing
+linear sequence as connected cards from left to right, with press/release pairing,
+consecutive mouse-path grouping, insertion points, drag reorder, context actions,
+zoom/pan, keyboard navigation and live playback highlighting. The raw event model
+remains the source of truth. Grouping is presentational and retains original samples.
+
+`workflow.py` owns card projection and the bounded graphics scene; `inspector.py`
+edits logical actions through the existing undoable model; `designer.py` builds
+the workspace, guided setup, searchable library and run/notes panels. `theme.py`
+and `widgets.py` share design tokens, original SVG icons and native controls.
+The main UI adopts Moonlight's visual family with a sidebar, spaced cards, a
+dedicated property inspector, clearer state indicators and a fixed transport bar.
+Large workflows render at most 60 cards per page. Version-1 script compatibility
+and input backends are retained. Conditional graphs and nested loops remain future work.
+
+Acceptance checks include edits to both halves of a key hold, preservation of raw
+mouse samples during grouped timing edits, atomic action reorder/undo, view-selection
+synchronization, insertion, page bounds, and read-only operation during playback.
+
 ## Technical references
 
 - [Moonlight](https://github.com/oNxZero/Moonlight) — reference behavior and palette.

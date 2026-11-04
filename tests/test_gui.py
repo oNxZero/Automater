@@ -68,7 +68,7 @@ def test_record_requires_device_access(qtbot, tmp_path, monkeypatch):
     win.toggle_record()
     assert not win.busy
     assert "No selected readable" in win.status.text()
-    assert win.tabs.currentIndex() == 1
+    assert win.pages.currentIndex() == 2
     clean(win)
 
 
