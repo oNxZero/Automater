@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from PySide6.QtCore import QPointF, Qt
+from PySide6.QtGui import QTextCursor
 from test_gui import clean, window
 
 from moonlight_studio.camera import CameraFollower
@@ -320,6 +321,61 @@ def test_group_notes_save_automatically_and_keep_run_results(qtbot, tmp_path, mo
     )
     assert win.model.steps == before and win.last_run == ending
     assert win.workflow.run_summary.isVisible()
+    clean(win)
+
+
+def test_group_notes_autosave_keeps_typing_position_scroll_and_edit_history(
+    qtbot, tmp_path, monkeypatch
+):
+    win = window(qtbot, tmp_path, monkeypatch)
+    win.workflow.canvas.choose_indices({0})
+    original = "\n".join(f"Instruction {i}" for i in range(80)) + "\n"
+    win.group_selection("Section", notes=original)
+    identity = win.group_inspector.identity
+    editor = win.group_inspector.text
+    qtbot.wait(30)
+    editor.setFocus()
+    editor.moveCursor(QTextCursor.End)
+    qtbot.keyClicks(editor, "First sentence.")
+    position = editor.textCursor().position()
+    scroll = editor.verticalScrollBar().value()
+    assert scroll > 0 and editor.document().isUndoAvailable()
+    qtbot.waitUntil(
+        lambda: win.model.groups[identity].get("notes") == original + "First sentence.",
+        timeout=1500,
+    )
+    assert editor.textCursor().position() == position
+    assert editor.verticalScrollBar().value() == scroll
+    assert editor.hasFocus() and editor.document().isUndoAvailable()
+    qtbot.keyClicks(editor, " Next sentence.")
+    expected = original + "First sentence. Next sentence."
+    qtbot.waitUntil(lambda: win.model.groups[identity].get("notes") == expected, timeout=1500)
+    assert editor.toPlainText() == expected
+    clean(win)
+
+
+def test_saving_group_notes_keeps_text_and_name_selections(qtbot, tmp_path, monkeypatch):
+    win = window(qtbot, tmp_path, monkeypatch)
+    win.workflow.canvas.choose_indices({0})
+    win.group_selection("Section", notes="Open the menu and wait.")
+    inspector = win.group_inspector
+    editor = inspector.text
+    editor.moveCursor(QTextCursor.End)
+    editor.insertPlainText(" Then continue.")
+    cursor = editor.textCursor()
+    cursor.setPosition(5)
+    cursor.setPosition(13, QTextCursor.KeepAnchor)
+    editor.setTextCursor(cursor)
+    inspector.name.setText("Updated section")
+    inspector.name.setSelection(2, 5)
+    win.path = tmp_path / "notes.json"
+    assert win.save_script()
+    assert (editor.textCursor().anchor(), editor.textCursor().position()) == (5, 13)
+    assert inspector.name.selectionStart() == 2
+    assert inspector.name.selectedText() == "dated"
+    assert load(win.path).groups[inspector.identity]["notes"].endswith("Then continue.")
+    win.refresh_workflow()
+    assert (editor.textCursor().anchor(), editor.textCursor().position()) == (5, 13)
     clean(win)
 
 

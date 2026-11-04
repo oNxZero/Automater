@@ -1,11 +1,11 @@
-# Verification of v0.9
+# Verification of v0.9.1
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
 Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **259 automated tests passed**, including offscreen Qt workflows and five live X11
+- **261 automated tests passed**, including offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Reproduced a Qt/PySide6 6.12.0 reference-count crash during repeated painting on
@@ -236,3 +236,15 @@ into /tmp for testing only; no system packages or input permissions were changed
 - Lint/format checks and source/wheel builds pass. Distribution contents include
   the new modules and exclude personal workflow JSON files. No physical input,
   host-window activation or game launch was needed for this UI update.
+
+## v0.9.1 note editing regression
+
+Reproduced autosave moving the description cursor from position 1205 to 0 and
+clearing a text selection during Save. The inspector now leaves unchanged fields
+intact when refreshing the same group. Switching groups and applying changed
+model values still updates their fields normally.
+
+Two Qt regressions type into an 80-line note, wait for the actual debounce timer,
+continue typing after saving, and verify cursor/scroll/focus/native undo state.
+Explicit workflow Save and a model refresh also preserve description and name
+selections while persisting the complete text. Both tests failed before the fix.

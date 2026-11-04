@@ -93,6 +93,7 @@ class GroupNotesInspector(QWidget):
     def select(self, identity, metadata):
         if self.pending and identity == self.identity:
             return
+        same_group = identity == self.identity
         self.timer.stop()
         self.loading = True
         self.identity = identity
@@ -105,13 +106,19 @@ class GroupNotesInspector(QWidget):
             else "Select actions, press Ctrl+G, then click the colored rectangle to explain that section."
         )
         if metadata:
-            self.name.setText(metadata["name"])
+            if not same_group or self.name.text().strip() != metadata["name"]:
+                self.name.setText(metadata["name"])
             index = self.color.findData(metadata["color"])
             if index < 0:
                 self.color.addItem("Custom color", metadata["color"])
                 index = self.color.count() - 1
             self.color.setCurrentIndex(index)
-            self.text.setPlainText(metadata.get("notes", ""))
+            notes = metadata.get("notes", "")
+            # Saving synchronously refreshes this inspector with its own text.
+            # Replacing an unchanged document resets its caret, selection, scroll
+            # and native undo history, interrupting typing after every autosave.
+            if not same_group or self.text.toPlainText() != notes:
+                self.text.setPlainText(notes)
         self.loading = False
         self.status.setText("Changes save automatically · Ctrl+Z to undo")
         self.update_imported()

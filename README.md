@@ -10,7 +10,7 @@ Record your keyboard and mouse. Shape the sequence visually. Run it your way.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Studio-v0.9-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Studio-v0.9.1-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 
 A native Python desktop app inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
@@ -34,6 +34,12 @@ Your original input samples and timings stay available in the **Events** view.
 | Connected keyboard, mouse, wait and path cards | Speed, repeats, start delay and loop gap | JSON import and export |
 | Click a card to edit its properties | Pause, resume and F12 emergency stop | Atomic saves and autosave recovery |
 | Insert between cards; duplicate or reorder | Watch the active action during replay | Undo / redo up to 50 event edits |
+
+## Fixed in v0.9.1: uninterrupted note editing
+
+Saving group notes preserves your typing position, selected text, scroll position
+and text undo history. Pausing while writing no longer sends the cursor back to
+the start of the description. Name-field selections also survive saving.
 
 ## New in v0.9: follow the flow, explain each section
 

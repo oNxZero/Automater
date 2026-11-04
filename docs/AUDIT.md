@@ -111,6 +111,7 @@ platform-specific work. No claim is made that every real game accepts every inpu
 | Group backgrounds could block box selection | Recognize a click on release; an actual drag continues through the graphics view's rubber-band selection. |
 | Metadata edits cleared run results and collapsed multi-selection | Separate executable changes from annotations; retain source-row selection, viewport and the worker trace for visual-only changes. |
 | Latest notes could be omitted during copy, save or tab switching | Flush the debounced draft before document/clipboard operations; preserve the selected group on return to a tab. |
+| Autosaving notes reset the cursor to the beginning | v0.9.1 avoids replacing unchanged text/name fields during the synchronous save refresh. Cursor, selection, scroll and native text undo survive, while switching groups or Undo still loads changed values. |
 | Toolbar Undo and Duplicate bypassed pending note edits | Flush drafts before Undo/Redo and before cloning group definitions, so undo and duplicated notes use the latest text. |
 | Wrapped group rectangles drew headings on top of each other | Anchor the label above the group's first member and resolve heading clicks before overlapping background bounds. |
 | An invalid draft could desynchronize the selected tab from its document | Keep the current tab and draft intact, show validation feedback, and avoid executing another tab's menu action. |
