@@ -1,0 +1,47 @@
+{
+  "name": "Movement + interaction",
+  "notes": "Example: hold W, pause, then tap E. Test mode emits no input.",
+  "steps": [
+    {
+      "delay_ms": 0,
+      "action": "key_down",
+      "code": "KEY_W",
+      "x": 0,
+      "y": 0,
+      "enabled": true
+    },
+    {
+      "delay_ms": 650,
+      "action": "key_up",
+      "code": "KEY_W",
+      "x": 0,
+      "y": 0,
+      "enabled": true
+    },
+    {
+      "delay_ms": 250,
+      "action": "wait",
+      "code": "",
+      "x": 0,
+      "y": 0,
+      "enabled": true
+    },
+    {
+      "delay_ms": 0,
+      "action": "key_down",
+      "code": "KEY_E",
+      "x": 0,
+      "y": 0,
+      "enabled": true
+    },
+    {
+      "delay_ms": 60,
+      "action": "key_up",
+      "code": "KEY_E",
+      "x": 0,
+      "y": 0,
+      "enabled": true
+    }
+  ],
+  "version": 1
+}

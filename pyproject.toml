@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moonlight-studio"
+version = "0.1.0"
+description = "A Linux input recorder and visual macro editor inspired by Moonlight"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "oNxZero"}]
+license = "MIT"
+classifiers = ["Operating System :: POSIX :: Linux", "Programming Language :: Python :: 3"]
+dependencies = ["PySide6-Essentials>=6.10,<7", "evdev>=1.9,<2", "python-xlib>=0.33,<1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "pytest-qt>=4.4,<5", "ruff>=0.12,<1", "build>=1.2,<2"]
+
+[project.scripts]
+moonlight-studio = "moonlight_studio.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

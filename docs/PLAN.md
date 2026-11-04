@@ -1,0 +1,134 @@
+# Moonlight Studio product and implementation plan
+
+## Goal and scope
+
+Build a Linux desktop companion to oNxZero/Moonlight for recording, editing, saving,
+and replaying keyboard and relative mouse macros. Preserve Moonlight's navy and
+periwinkle palette, profiles, physical hotkeys, and evdev/uinput compatibility with
+Wayland and X11. This is a separate Python application; the existing clicker and
+Minecraft client sources remain untouched.
+
+The first release targets Linux, Python 3.11+, and ordinary keyboards and relative
+mice. “All inputs” means keyboard press/release, mouse buttons, relative movement,
+and vertical/horizontal wheel events. Touchscreens, absolute pointing devices,
+gamepads, IME/text composition, and high resolution wheel metadata are outside v0.1.
+Record physical key codes, not typed characters: keyboard layouts and in-game
+bindings affect the result. No executable Python is accepted in macro files.
+
+## User journeys
+
+1. Open the app. The setup panel explains device access and current capabilities.
+2. Select keyboard/mouse devices and capture categories. Press Record or F6;
+   recording starts after a countdown so application controls stay out of the macro.
+3. Perform actions. F6 ends recording; F12 stops any active operation. Reserved
+   F6/F7/F8/F12 controls never enter the recording. Stopping adds necessary releases.
+4. Review delays and key/button/movement/wheel events in an editable table. Insert,
+   duplicate, move, disable, delete, and undo/redo steps. Edit name and notes.
+5. Choose speed, repeat count, loop gap, and countdown. Test mode highlights steps
+   without emitting input. Replay uses an immutable snapshot of the script.
+6. Choose Desktop (uinput) for native game input, or Background (X11 experimental)
+   and a specific window. Background delivery never steals focus or falls back to
+   desktop injection. The user tests the target application's compatibility.
+7. Save a named script to the library or open/export a JSON file. Recover unfinished
+   work from autosave after a restart. Confirm before discarding unsaved edits.
+
+## Feature inventory for v0.1
+
+| Area | Implementation |
+| --- | --- |
+| Capture | evdev device chooser; keyboard/buttons/motion filters; relative timing; repeat suppression; dropped-event and disconnect errors |
+| Editor | Editable enabled/delay/action/key/X/Y columns; insert key tap/click/wait/move/scroll; duplicate/delete/reorder; undo/redo; name/notes |
+| Playback | Dedicated worker; monotonic deadlines; 0.1–10× speed; finite/until-stopped loops; countdown and gap; pause/resume; F12 stop |
+| Cleanup | Release held inputs on pause, completion, loop boundaries, error, stop, and normal application close; restore logical holds on resume |
+| Routing | Desktop uinput; explicit X11/Xwayland client picker; window identity/liveness checks; virtual client pointer starts at window center |
+| Persistence | Versioned JSON; strict field and range checks; size/event limits; atomic private saves; library; timed autosave; recovery |
+| UX | Resizable Qt interface; Moonlight palette; onboarding/setup; readable statuses; live step/length statistics; progress highlighting; test mode |
+| Delivery | Python package and console command; local launcher; sample macro; README; architecture and compatibility docs; tests and CI |
+
+## Capability boundaries
+
+| Session / destination | Record physical keyboard/mouse | Desktop replay | Unfocused target replay |
+| --- | --- | --- | --- |
+| Linux X11 | evdev access required | uinput access required | Experimental XSendEvent |
+| Linux Wayland, native client | evdev access required | uinput access required | Not supported |
+| Linux Wayland, Xwayland client | evdev access required | uinput access required | Experimental XSendEvent |
+| Windows / macOS | Future backend | Future backend | Future platform assessment |
+
+Game acceptance of virtual devices and synthetic window messages is application
+specific. Relative movement in background mode is a virtual window cursor, not
+raw camera motion. Background mode does not guarantee minimized-window, raw-input,
+or anti-cheat compatibility. Desktop mode sends to the active desktop; it cannot
+keep a native Wayland game receiving input while another app has focus. Selecting
+a program means selecting a concrete window, not injecting into a process.
+
+## Architecture
+
+`models.py` owns the versioned schema and validation. `storage.py` handles bounded
+imports and atomic writes. `linux_input.py` owns the device monitor, synchronized
+recorder, and uinput backend. `x11.py` handles window enumeration and directed
+events. `engine.py` is a GUI-independent replay scheduler with backend injection.
+`editor.py` owns the Qt table and undo commands. `window.py` owns the application
+workflow; worker callbacks cross into Qt through queued signals. `app.py` provides
+GUI, demo, and JSON diagnostics entry points.
+
+Threads: Qt owns all widgets; a physical-input monitor waits in select(); replay
+runs in one worker and uses a condition variable for cancellation and pausing.
+Only one recording/countdown/playback operation may run at once. Recording results
+are handed to the UI only after capture stops. No blocking playback on the UI.
+No network functionality, account system, telemetry, or automatic uploads of macros.
+
+## Stability acceptance criteria
+
+- Stop interrupts a long wait promptly; no busy-spin loops, even for zero-delay scripts.
+- Errors reach the UI; partial presses are tracked before sending, and cleanup
+  attempts every held release even if one fails.
+- Pause releases held keys, resume restores their logical state, and stop while
+  paused does not restore keys.
+- Hotkeys work outside the app when physical devices are readable. Virtual output
+  devices are excluded to prevent recursive recording and shortcut triggering.
+- Input disconnect/SYN_DROPPED stops active work visibly. Restart monitoring from
+  Setup after reconnecting. No automatic silent device changes during recording.
+- Unknown schema versions, NaN/infinity, wrong types, oversized files, unsupported
+  actions/codes, and invalid timing are rejected before replay.
+- Atomic saves preserve the previous good file on failure. Autosave never silently
+  replaces a user-selected script. Recovery is an explicit choice.
+- Tests use injected devices/backends and offscreen Qt. Real hardware testing is a
+  separate release gate; passing unit tests does not certify games or compositors.
+
+## Implementation phases
+
+1. **Foundation:** package, schema, bounded storage, sample, docs and test harness.
+2. **Engine:** cancellation, pause/resume, repeats, deadlines and cleanup tests.
+3. **Linux capture/output:** permissions diagnostics, device selection, filtering,
+   hotkeys and disconnect handling; evdev fixtures and virtual-output exclusion.
+4. **Visual workspace:** event editor, library, playback configuration, setup,
+   undo/redo, unsaved-state protection and recovery.
+5. **Background adapter:** concrete window selection, identity checks, keyboard,
+   button, wheel and virtual-pointer messages; controlled X11 receiver test.
+6. **Verification and delivery:** automated tests/lint/build, GUI walkthrough,
+   private GitHub repository and CI; record actual verification in VALIDATION.md.
+
+## Later releases, deliberately separate from v0.1
+
+- Packaged desktop installers and signed release artifacts after hardware validation.
+- Configurable hotkeys and theme choices; per-script playback presets.
+- Nested loop blocks, reusable submacros, variables, conditionals, visual matching,
+  optional OCR and a constrained expression language (no arbitrary imported code).
+- Recording motion coalescing/decimation with a preview and quantified error bound;
+  original samples remain available. High-resolution wheel, ABS and gamepad capture.
+- Compositor-approved portal integration for devices where appropriate; investigate
+  compositor-specific routing only with explicit capability detection.
+- Windows/macOS adapters with their own permissions, tests and compatibility matrix.
+- Isolated replay helper process plus watchdog for stronger fault containment.
+  v0.1 uses a worker thread; force kill/power loss cannot run Python cleanup handlers.
+- Per-game tested compatibility profiles based on observed behavior. No promise of
+  anti-cheat bypass, process cloaking, driver injection, or invisible automation.
+
+## Technical references
+
+- [Moonlight](https://github.com/oNxZero/Moonlight) — reference behavior and palette.
+- [python-evdev tutorial](https://python-evdev.readthedocs.io/en/latest/tutorial.html)
+- [Linux uinput](https://docs.kernel.org/input/uinput.html)
+- [Qt for Python](https://doc.qt.io/qtforpython-6/gettingstarted.html)
+- [Xlib directed events](https://python-xlib.sourceforge.net/doc/html/python-xlib_14.html)
+- [Wayland model](https://wayland.freedesktop.org/docs/book/Protocol.html)
