@@ -339,12 +339,14 @@ def test_group_notes_autosave_keeps_typing_position_scroll_and_edit_history(
     qtbot.keyClicks(editor, "First sentence.")
     position = editor.textCursor().position()
     scroll = editor.verticalScrollBar().value()
+    viewport = editor.viewport().size()
     assert scroll > 0 and editor.document().isUndoAvailable()
     qtbot.waitUntil(
         lambda: win.model.groups[identity].get("notes") == original + "First sentence.",
         timeout=1500,
     )
     assert editor.textCursor().position() == position
+    assert editor.viewport().size() == viewport
     assert editor.verticalScrollBar().value() == scroll
     assert editor.hasFocus() and editor.document().isUndoAvailable()
     qtbot.keyClicks(editor, " Next sentence.")

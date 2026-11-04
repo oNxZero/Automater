@@ -59,6 +59,9 @@ class GroupNotesInspector(QWidget):
         fields.addWidget(self.color)
         fields.addWidget(self.text, 1)
         self.status = label("Changes save automatically · Ctrl+Z to undo")
+        # Keep two lines available for status text so switching between the
+        # initial hint, Saving and Saved cannot resize the editor while typing.
+        self.status.setMinimumHeight(36)
         fields.addWidget(self.status)
         self.save = button("Save group notes", self.flush, "primary", glyph="check")
         fields.addWidget(self.save)
