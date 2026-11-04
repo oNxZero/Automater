@@ -120,7 +120,10 @@ class GroupNotesInspector(QWidget):
             if not same_group or self.text.toPlainText() != notes:
                 self.text.setPlainText(notes)
         self.loading = False
-        self.status.setText("Changes save automatically · Ctrl+Z to undo")
+        if not same_group:
+            # Reloading this longer hint during a save can briefly wrap it,
+            # resize the text editor and clamp its scroll position.
+            self.status.setText("Changes save automatically · Ctrl+Z to undo")
         self.update_imported()
 
     def changed(self, *_):

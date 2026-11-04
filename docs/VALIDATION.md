@@ -248,3 +248,6 @@ Two Qt regressions type into an 80-line note, wait for the actual debounce timer
 continue typing after saving, and verify cursor/scroll/focus/native undo state.
 Explicit workflow Save and a model refresh also preserve description and name
 selections while persisting the complete text. Both tests failed before the fix.
+GitHub's font/layout combination also exposed a brief status-message wrap that
+changed the scroll position by 10 pixels. Refreshing the same group now retains
+its current save status instead of temporarily restoring the longer initial hint.
