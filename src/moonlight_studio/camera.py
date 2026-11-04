@@ -36,10 +36,19 @@ class CameraFollower(QObject):
     def advance(self, seconds):
         omega = 14.0
         decay = math.exp(-omega * seconds)
+        before = QPointF(self.position)
         difference = self.position - self.target
         coefficient = self.velocity + difference * omega
         self.position = self.target + (difference + coefficient * seconds) * decay
         self.velocity = (self.velocity - coefficient * (omega * seconds)) * decay
+        # A retarget near a scroll boundary can leave too much inherited velocity.
+        # Stop on each target axis instead of overshooting and bouncing back.
+        for axis in ("x", "y"):
+            previous = getattr(before, axis)() - getattr(self.target, axis)()
+            current = getattr(self.position, axis)() - getattr(self.target, axis)()
+            if previous == 0 or previous * current < 0:
+                getattr(self.position, "set" + axis.upper())(getattr(self.target, axis)())
+                getattr(self.velocity, "set" + axis.upper())(0)
         if (
             self.position - self.target
         ).manhattanLength() < 0.25 and self.velocity.manhattanLength() < 0.5:

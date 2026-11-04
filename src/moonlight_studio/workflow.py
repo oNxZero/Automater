@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from .camera import CameraFollower
+from .connections import FlowConnection, connection_state
 from .editor import editing_command
 from .group_canvas import GroupCanvasMixin
 from .run_feedback import block_state
@@ -77,6 +78,9 @@ def blocks_for(steps):
     result, i = [], 0
     while i < len(steps):
         step, end = steps[i], i + 1
+        if step.action == "note":
+            i += 1
+            continue
         duration = step.delay_ms
         if (
             not step.standalone
@@ -109,8 +113,6 @@ def blocks_for(steps):
                 end += 1
             title = "Move pointer" if kind == "move" else "Scroll"
             detail = f"X {dx:+,}   Y {dy:+,}"
-        elif step.action == "note":
-            kind, title, detail = "note", step.title or "Note", step.text
         elif step.action == "wait":
             kind, title = "wait", "Timer"
             detail = f"Wait {timing_range(duration, step.maximum_ms)}"
@@ -152,8 +154,7 @@ class Node(QGraphicsObject):
         self.animation.setDuration(140)
         self.animation.setEasingCurve(QEasingCurve.OutCubic)
         self.animation.valueChanged.connect(self.animate_emphasis)
-        description = block.detail + "\n" if block.kind == "note" else ""
-        tooltip = f"{block.title}\n{description}Events {block.start + 1}–{block.end}\nClick to edit · drag to preview a new position"
+        tooltip = f"{block.title}\nEvents {block.start + 1}–{block.end}\nClick to edit · drag to preview a new position"
         self.setToolTip("<qt>" + html.escape(tooltip).replace("\n", "<br>") + "</qt>")
 
     def boundingRect(self):
@@ -219,29 +220,6 @@ class Node(QGraphicsObject):
         )
         painter.setFont(font(9))
         painter.setPen(QColor("#a0aac5"))
-        if self.block.kind == "note":
-            metrics = painter.fontMetrics()
-            key = (metrics.height(), metrics.horizontalAdvance("Moonlight"))
-            if getattr(self, "_note_key", None) != key:
-                words, lines = self.block.detail.split(), []
-                for line_index in range(3):
-                    if not words:
-                        break
-                    if line_index == 2:
-                        lines.append(metrics.elidedText(" ".join(words), Qt.ElideRight, 174))
-                        break
-                    line = words.pop(0)
-                    while words and metrics.horizontalAdvance(line + " " + words[0]) <= 174:
-                        line += " " + words.pop(0)
-                    lines.append(metrics.elidedText(line, Qt.ElideRight, 174))
-                self._note_key, self._note_lines = key, lines
-            for line_index, line in enumerate(self._note_lines):
-                painter.drawText(
-                    QRectF(16, 88 + line_index * metrics.height(), 174, metrics.height()),
-                    Qt.AlignVCenter,
-                    line,
-                )
-            return
         painter.drawText(QRectF(16, 88, 174, 20), Qt.AlignVCenter, self.block.detail)
         painter.setPen(QPen(QColor("#32384c"), 1))
         painter.drawLine(16, 115, 188, 115)
@@ -329,7 +307,7 @@ class Node(QGraphicsObject):
         menu = QMenu()
         for text, action in (
             ("Copy\tCtrl+C", "copy"),
-            ("Add note after selection…", "note"),
+            ("Notes for selected group…", "group_notes"),
             ("Group selection…\tCtrl+G", "group"),
             ("Ungroup selection\tCtrl+Shift+G", "ungroup"),
             ("Cut\tCtrl+X", "cut"),
@@ -446,7 +424,6 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
             "Workflow. Left-drag empty space to box select. Middle-drag to pan. Ctrl-click adds selection."
         )
         self.blocks, self.starts, self.nodes = [], [], {}
-        self.note_count = 0
         self.selected_indices = set()
         self.anchor = None
         self._rendering = False
@@ -461,6 +438,10 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         self.drag_scroll.timeout.connect(self.scroll_drag)
         self.follow_enabled = True
         self.follow_target = None
+        self.follow_interrupted = False
+        self.flow_timer = QTimer(self)
+        self.flow_timer.setInterval(33)
+        self.flow_timer.timeout.connect(self.animate_connections)
         self.camera = CameraFollower(self)
         self.camera.positionChanged.connect(self.centerOn)
         self.grid_columns = 4
@@ -472,7 +453,8 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         self.execution_trace = None
         self.groups = {}
         self.group_items = {}
-        self.group_spans, self.group_starts = [], []
+        self.group_members, self.group_rects = {}, {}
+        self.group_click_origin = self.group_click_id = None
         self.scene().selectionChanged.connect(self.selection_changed)
         self.horizontalScrollBar().valueChanged.connect(self.queue_visible_nodes)
         self.verticalScrollBar().valueChanged.connect(self.queue_visible_nodes)
@@ -502,9 +484,9 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
     def node_x(self, index):
         return self.node_position(index).x()
 
-    def rebuild(self, blocks, selected_row=-1, groups=None):
+    def rebuild(self, blocks, selected_row=-1, groups=None, preserve_view=False):
+        center = self.mapToScene(self.viewport().rect().center())
         self.blocks = blocks
-        self.note_count = sum(block.kind == "note" for block in blocks)
         self.groups = groups or {}
         self.build_group_spans()
         self.starts = [b.start for b in blocks]
@@ -513,7 +495,10 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
             index = max(0, bisect_right(self.starts, selected_row) - 1)
             self.selected_indices = {index}
         self.render_canvas()
-        if selected_row >= 0 and blocks:
+        if preserve_view:
+            self.centerOn(center)
+            self.update_visible_nodes()
+        elif selected_row >= 0 and blocks:
             self.reveal_index(index)
 
     def render_canvas(self):
@@ -545,6 +530,7 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         self.update_visible_nodes()
 
     def update_scene_geometry(self):
+        self.calculate_group_rects()
         last = self.node_position(max(0, len(self.blocks) - 1))
         right = (
             136 + (self.grid_columns - 1) * PITCH + CARD_WIDTH
@@ -641,6 +627,30 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         finally:
             self.scene().blockSignals(False)
         self.apply_drag_positions()
+        self.update_connections()
+
+    def update_connections(self):
+        animated = False
+        for boundary, items in self.decorations.items():
+            state = connection_state(boundary, self.blocks, self.starts, self.execution_trace)
+            for item in items:
+                if isinstance(item, FlowConnection):
+                    item.set_state(state)
+                    animated |= state == "running"
+        if animated and self.isVisible():
+            if not self.flow_timer.isActive():
+                self.flow_timer.start()
+        else:
+            self.flow_timer.stop()
+
+    def animate_connections(self):
+        if not self.isVisible():
+            self.flow_timer.stop()
+            return
+        for items in self.decorations.values():
+            for item in items:
+                if isinstance(item, FlowConnection) and item.state == "running":
+                    item.update()
 
     def make_connector(self, boundary):
         items = []
@@ -685,11 +695,12 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         else:
             path.lineTo(b)
             middle = (a + b) / 2
-        items.append(self.scene().addPath(path, QPen(QColor("#5d5877"), 1.5)))
         arrow = QPainterPath(b + (QPointF(-4, -6) if vertical or wrapping else QPointF(-6, -4)))
         arrow.lineTo(b)
         arrow.lineTo(b + (QPointF(4, -6) if vertical or wrapping else QPointF(-6, 4)))
-        items.append(self.scene().addPath(arrow, QPen(QColor("#8d80ae"), 1.5)))
+        connection = FlowConnection(path, arrow)
+        self.scene().addItem(connection)
+        items.append(connection)
         row = (
             self.blocks[boundary].start
             if boundary < len(self.blocks)
@@ -723,13 +734,19 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
 
         return QSizeF(CARD_WIDTH, CARD_HEIGHT)
 
-    def follow_index(self, index):
+    def follow_index(self, index, force=False):
         previous = self.follow_target
         self.follow_target = index
-        if not self.follow_enabled or self.pointer_interaction or index == previous:
+        if (
+            not self.isVisible()
+            or not self.follow_enabled
+            or self.pointer_interaction
+            or (index == previous and not force)
+        ):
             return
         if not 0 <= index < len(self.blocks):
             return
+        self.follow_interrupted = False
         current = self.mapToScene(self.viewport().rect().center())
         destination = self.node_position(index) + QPointF(CARD_WIDTH / 2, CARD_HEIGHT / 2)
         visible = self.mapToScene(self.viewport().rect()).boundingRect()
@@ -790,12 +807,17 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         if not self.reveal_requested or self.pointer_interaction or not self.isVisible():
             return
         self.reveal_requested = False
+        if self.camera.timer.isActive() and not self.follow_interrupted:
+            return
         indices = sorted(self.selected_indices.intersection(self.nodes))
         if not indices:
             return
         bounds = QRectF()
         for index in indices:
             bounds = bounds.united(self.nodes[index].sceneBoundingRect())
+        grouped = any(self.blocks[index].group_id for index in indices)
+        if grouped:
+            bounds = bounds.adjusted(-14, -32, 14, 14)
         mapped = self.mapFromScene(bounds).boundingRect()
         if (
             mapped.width() + 48 > self.viewport().width()
@@ -803,6 +825,8 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         ):
             target = self.anchor if self.anchor in indices else indices[0]
             bounds = self.nodes[target].sceneBoundingRect()
+            if self.blocks[target].group_id:
+                bounds = bounds.adjusted(-14, -32, 14, 14)
         self.ensureVisible(bounds, 24, 24)
 
     def desired_grid_columns(self):
@@ -825,8 +849,15 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         self._reflow_pending = False
         if self.desired_grid_columns() == self.grid_columns:
             return
+        playback_target = (
+            self.follow_target
+            if self.execution_trace and self.follow_enabled and not self.follow_interrupted
+            else None
+        )
         if self.selected_indices:
-            anchor = min(self.selected_indices)
+            anchor = (
+                self.anchor if self.anchor in self.selected_indices else min(self.selected_indices)
+            )
         elif self.verticalScrollBar().value() <= self.verticalScrollBar().minimum() + 1:
             anchor = 0
         else:
@@ -849,16 +880,47 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         for item in self.group_items.values():
             self.remove_scene_item(item)
         self.group_items = {}
-        if not self.execution_trace or self.execution_trace["phase"] == "finished":
+        if playback_target is not None:
+            self.update_visible_nodes()
+            self.follow_index(playback_target, force=True)
+        elif not self.execution_trace or self.execution_trace["phase"] == "finished":
             self.reveal_index(anchor)
         else:
             self.update_visible_nodes()
+
+    def hideEvent(self, event):
+        self.camera.stop()
+        self.flow_timer.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.follow_target is not None and not self.follow_interrupted:
+            self.follow_index(self.follow_target, force=True)
+        self.update_connections()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.queue_reflow()
         self.queue_visible_nodes()
-        if self.pan_origin is None:
+        if (
+            self.execution_trace
+            and self.follow_enabled
+            and self.follow_target is not None
+            and not self.follow_interrupted
+        ):
+            # Resizing the finished-run banner must not reveal an old selection
+            # while the playback camera is moving toward the bottom of the scene.
+            QTimer.singleShot(
+                0,
+                self,
+                lambda: (
+                    self.follow_index(self.follow_target, force=True)
+                    if self.follow_target is not None
+                    else None
+                ),
+            )
+        elif self.pan_origin is None:
             self.request_selection_visibility()
 
     def highlight(self, row):
@@ -879,6 +941,7 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         if not states:
             self.camera.stop()
             self.follow_target = None
+            self.follow_interrupted = False
         if target is not None:
             self.follow_index(target)
         for index, node in self.nodes.items():
@@ -887,29 +950,24 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
                 node.execution_state = state
                 node.playing = state == "running"
                 node.update()
+        self.update_connections()
 
     def set_execution_trace(self, trace, reveal=True):
         self.execution_trace = trace
-        row = trace["active_row"]
+        # Camera progress follows dispatch order, independently of held-key highlights.
+        # Following an older held press after a release used to scroll backwards.
+        row = max(trace.get("last_sent_row", -1), trace["active_row"])
         if trace["phase"] == "finished":
-            row = trace["failed_row"] if trace["failed_row"] >= 0 else trace["last_activity_row"]
-        elif trace["phase"] not in ("paused", "countdown", "positioning", "settling", "loop_gap"):
-            if row < 0:
-                previous = trace["last_sent_row"]
-                candidate = (
-                    max(0, bisect_right(self.starts, previous) - 1)
-                    if previous >= 0 and self.blocks
-                    else -1
-                )
-                if (
-                    candidate >= 0
-                    and self.blocks[candidate].kind in ("move", "scroll")
-                    and block_state(self.blocks[candidate], trace) == "running"
-                ):
-                    row = previous
-                elif trace.get("held_rows"):
-                    row = max(trace["held_rows"])
-        else:
+            row = max(trace["failed_row"], trace["last_activity_row"])
+        elif trace["phase"] in (
+            "paused",
+            "preparing",
+            "countdown",
+            "activating",
+            "positioning",
+            "settling",
+            "loop_gap",
+        ):
             row = -1
         target = max(0, bisect_right(self.starts, row) - 1) if row >= 0 and self.blocks else None
         if reveal and target is not None:
@@ -920,6 +978,7 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
                 node.execution_state = state
                 node.playing = state == "running"
                 node.update()
+        self.update_connections()
 
     def zoom(self, factor):
         current = self.transform().m11()
@@ -962,7 +1021,15 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         self.zoomChanged.emit(round(scale * 100))
 
     def mousePressEvent(self, event):
+        self.group_click_id = None
+        if event.button() == Qt.LeftButton:
+            position = event.position().toPoint()
+            item = self.itemAt(position)
+            if not isinstance(item, (Node, InsertPoint, StartPoint)):
+                self.group_click_id = self.group_at(self.mapToScene(position))
+                self.group_click_origin = position
         if event.button() in (Qt.LeftButton, Qt.MiddleButton):
+            self.follow_interrupted = True
             self.camera.stop()
             self.pointer_interaction = True
         if event.button() == Qt.MiddleButton:
@@ -1005,12 +1072,31 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.LeftButton:
             self.pointer_interaction = False
+            identity, self.group_click_id = self.group_click_id, None
+            if (
+                identity is not None
+                and self.group_click_origin is not None
+                and (event.position().toPoint() - self.group_click_origin).manhattanLength() < 6
+            ):
+                point = self.mapToScene(event.position().toPoint())
+                candidates = [
+                    index for index in self.nodes if self.blocks[index].group_id == identity
+                ]
+                if candidates:
+                    self.anchor = min(
+                        candidates,
+                        key=lambda index: (
+                            self.nodes[index].sceneBoundingRect().center() - point
+                        ).manhattanLength(),
+                    )
+                self.groupRequested.emit(identity, "inspect")
             if self._reflow_pending:
                 self.queue_reflow()
             if self.reveal_requested:
                 self.request_selection_visibility()
 
     def wheelEvent(self, event):
+        self.follow_interrupted = True
         self.camera.stop()
         if event.modifiers() & Qt.ControlModifier:
             self.zoom(1.12 if event.angleDelta().y() > 0 else 1 / 1.12)
@@ -1138,10 +1224,7 @@ class Workflow(QWidget):
         selected = len(self.canvas.selected_indices)
         self.selection_label.setText(f"{selected:,} selected")
         self.selection_bar.setVisible(selected > 0)
-        notes = self.canvas.note_count
-        self.action_count.setText(
-            f"{count - notes:,} actions" + (f" · {notes} notes" if notes else "")
-        )
+        self.action_count.setText(f"{count:,} actions")
 
     def apply_layout(self):
         self.canvas.layout_mode = self.layout_choice.currentData()

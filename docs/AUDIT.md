@@ -96,7 +96,32 @@ platform-specific work. No claim is made that every real game accepts every inpu
 | Library missed JSON files saved outside its internal folder | Index known save folders, recent files and the launcher directory; Add folder includes other locations. Ignore invalid/configuration JSON and scan off the UI thread. |
 | Tabs lacked file/document controls | Right-click rename/save/save as/close/close others, plus double-click rename. Refuse destination collisions and preserve unsaved edits. |
 | Recording gave no indication of captured content | Bounded live preview of recent actions, total count, elapsed time and held inputs; only finish commits events. |
-| Explanations and categories were missing | Plain-text note cards and named colored group frames, with persistence, Undo and cross-tab clipboard metadata. Notes are excluded from replay. |
+| Explanations and categories were missing | Named colored groups with persistence, Undo and cross-tab clipboard metadata; v0.9 replaces inline note cards with explanations on a single group rectangle. |
+
+## v0.9 playback and grouping findings
+
+| Reproduced problem | Resolution |
+| --- | --- |
+| Completed cards left all connecting arrows neutral | Connections use the worker trace for completion, running, pause and failure colors; only visible active streams animate. Timers stop while hidden or paused. |
+| Camera bounced up to an earlier action near the bottom | Focus follows the latest sent/active row independently of older held inputs. Last-run banner resizing no longer reveals a stale selection. |
+| Retargeting near a scroll limit overshot and reversed | Clamp each spring axis when it reaches the target; retain velocity only while approaching it. |
+| Grid reflow discarded the playback camera target | Carry the active follow target through geometry changes and retarget against the new scroll bounds. |
+| New-tab control sat beyond the tab strip | Put a visible + directly after the tabs; Ctrl+T remains available. |
+| Inline notes occupied executable card positions; groups fragmented across rows | Remove inline note authoring/rendering. Each group has one tinted bounding rectangle with its own explanation inspector. Legacy cards migrate without altering inputs. |
+| Group backgrounds could block box selection | Recognize a click on release; an actual drag continues through the graphics view's rubber-band selection. |
+| Metadata edits cleared run results and collapsed multi-selection | Separate executable changes from annotations; retain source-row selection, viewport and the worker trace for visual-only changes. |
+| Latest notes could be omitted during copy, save or tab switching | Flush the debounced draft before document/clipboard operations; preserve the selected group on return to a tab. |
+| Toolbar Undo and Duplicate bypassed pending note edits | Flush drafts before Undo/Redo and before cloning group definitions, so undo and duplicated notes use the latest text. |
+| Wrapped group rectangles drew headings on top of each other | Anchor the label above the group's first member and resolve heading clicks before overlapping background bounds. |
+| An invalid draft could desynchronize the selected tab from its document | Keep the current tab and draft intact, show validation feedback, and avoid executing another tab's menu action. |
+| Group inspector fields collapsed at 1000×680 | Put the notes panel in a scroll area and retain a usable text-editor height. |
+| Newer file versions could be downgraded when other optional fields were serialized | Compute required schema with max(existing, required); preserve an explicitly loaded version. |
+| Copying actions could crash Qt during interpreter shutdown | Reproduced a Python-owned QMimeData destructor running after Python exit. Use Qt-owned text clipboard data containing the validated action envelope; keep legacy custom-MIME paste support. A subprocess regression checks normal exit without clearing copied data. |
+
+The grouping rectangle encloses its members' bounds. A nonadjacent group can
+visually contain unselected cards; those cards are not added to the group. This is
+a visual annotation, not a nested execution scope. Physical compositor/game input
+acceptance remains outside these UI regressions.
 | Save prompt and unsaved badge did not match the workspace | Custom save dialog with explicit choices and safe cancellation; badge beside the title summary, with long summaries elided instead of wrapping. |
 | Selected foreground apps stopped immediately when unfocused | Restore/focus the chosen window after countdown, before input, with an opt-out. Identity/focus checks and cleanup remain active. Background input still requires a supported background route. |
 | Empty properties retained a stale action caption | Clear the caption and close action properties on explicit deselection. |

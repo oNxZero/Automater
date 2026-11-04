@@ -42,26 +42,39 @@ class Change(QUndoCommand):
 
 class StepModel(QAbstractTableModel):
     changed = Signal()
+    beforeChange = Signal()
+    inputChanged = Signal()
     invalid = Signal(str)
 
     def __init__(self, undo: QUndoStack):
         super().__init__()
         self.steps = []
+        self.last_runtime_changed = True
+        self.resetting = False
         self.groups = {}
         self.undo = undo
         self.playing_row = -1
         self.execution_trace = None
 
     def replace(self, steps, groups=None):
+        self.last_runtime_changed = len(steps) != len(self.steps) or any(
+            any(getattr(a, field) != getattr(b, field) for field in FIELDS)
+            for a, b in zip(self.steps, steps)
+        )
+        self.resetting = True
         self.beginResetModel()
         self.steps = list(steps)
         source = self.groups if groups is None else groups
         used = {step.group_id for step in steps if step.group_id}
         self.groups = deepcopy({key: value for key, value in source.items() if key in used})
         self.endResetModel()
+        self.resetting = False
         self.changed.emit()
+        if self.last_runtime_changed:
+            self.inputChanged.emit()
 
     def commit(self, steps, text, groups=None):
+        self.beforeChange.emit()
         if len(steps) > MAX_STEPS:
             self.invalid.emit(f"At most {MAX_STEPS:,} steps are supported")
             return
@@ -183,7 +196,11 @@ class StepDelegate(QStyledItemDelegate):
         column = index.column()
         if column in (2, 3):
             widget = QComboBox(parent)
-            widget.addItems(ACTIONS if column == 2 else [""] + sorted(KEY_CODES))
+            widget.addItems(
+                [action for action in ACTIONS if action != "note"]
+                if column == 2
+                else [""] + sorted(KEY_CODES)
+            )
             widget.setEditable(column == 3)
             return widget
         if column in (1, 6):

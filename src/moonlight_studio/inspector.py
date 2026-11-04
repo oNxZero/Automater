@@ -5,11 +5,9 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QFrame,
-    QLineEdit,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -105,25 +103,6 @@ class ActionInspector(QWidget):
         content_layout.setSpacing(12)
         for widget in (self.caption, self.title, self.summary, self.fields):
             content_layout.addWidget(widget)
-        self.note_fields = QWidget()
-        note_layout = QVBoxLayout(self.note_fields)
-        note_layout.setContentsMargins(0, 0, 0, 0)
-        self.note_title = QLineEdit()
-        self.note_title.setMaxLength(120)
-        self.note_title.setAccessibleName("Note title")
-        self.note_text = QTextEdit()
-        self.note_text.setAcceptRichText(False)
-        self.note_text.setAccessibleName("Note text")
-        self.note_text.setMinimumHeight(180)
-        note_layout.addWidget(label("Title"))
-        note_layout.addWidget(self.note_title)
-        note_layout.addWidget(label("Explanation"))
-        note_layout.addWidget(self.note_text)
-        content_layout.addWidget(self.note_fields)
-        self.note_fields.hide()
-        self.note_title.textChanged.connect(lambda: self.mark_changed("title"))
-        self.note_text.textChanged.connect(lambda: self.mark_changed("text"))
-        self.note_text.textChanged.connect(self.validate_note)
         content_layout.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -188,8 +167,7 @@ class ActionInspector(QWidget):
         ):
             widget.setMinimum(-32767 if widget in (self.x, self.y) else 0)
             widget.setSpecialValueText("")
-        self.note_fields.setVisible(block is not None and block.kind == "note")
-        self.fields.setVisible(block is not None and block.kind != "note")
+        self.fields.setVisible(block is not None)
         self.apply_btn.setEnabled(block is not None)
         if block is None:
             self.caption.setText("ACTION PROPERTIES")
@@ -202,14 +180,6 @@ class ActionInspector(QWidget):
         self.caption.setText(f"ACTION {block.start + 1:02d}  /  {block.kind.upper()}")
         self.title.setText(block.title)
         self.summary.setText(f"Events {block.start + 1}–{block.end} in your script")
-        if block.kind == "note":
-            self.summary.setText("Visual explanation · never sends input or adds a delay")
-            self.note_title.setText(first.title or "Note")
-            self.note_text.setPlainText(first.text)
-            self.rerecord_btn.hide()
-            self.loading = False
-            self.validate_note()
-            return
         self.enabled.setChecked(first.enabled)
         key_visible = block.kind in ("key", "mouse")
         pair = key_visible and len(subset) == 2
@@ -246,22 +216,8 @@ class ActionInspector(QWidget):
         self.loading = False
         self.update_range_fields()
 
-    def validate_note(self):
-        if self.block is not None and self.block.kind == "note":
-            self.apply_btn.setEnabled(len(self.note_text.toPlainText()) <= 4000)
-
     def apply(self):
         if self.block:
-            if self.block.kind == "note":
-                self.applied.emit(
-                    self.targets if len(self.targets) > 1 else self.block,
-                    {
-                        "title": self.note_title.text().strip() or "Note",
-                        "text": self.note_text.toPlainText(),
-                        "_changed": set(self.changed_fields) if len(self.targets) > 1 else None,
-                    },
-                )
-                return
             try:
                 code = (
                     self.key.code()
@@ -312,18 +268,6 @@ class ActionInspector(QWidget):
             return
         self.targets = list(blocks)
         self.loading = True
-        if blocks[0].kind == "note":
-            if len({steps[b.start].title for b in blocks}) > 1:
-                self.note_title.clear()
-                self.note_title.setPlaceholderText("Mixed titles")
-            if len({steps[b.start].text for b in blocks}) > 1:
-                self.note_text.clear()
-                self.note_text.setPlaceholderText(
-                    "Different notes · type to replace selected notes"
-                )
-            self.changed_fields.clear()
-            self.loading = False
-            return
         self.apply_btn.setText(f"Apply to {len(blocks)} actions")
         subsets = [steps[b.start : b.end] for b in blocks]
         if not all(len(s) > 1 for s in subsets):

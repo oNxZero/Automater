@@ -291,3 +291,22 @@ Validation includes responsive layouts at 1000–3440 pixels, continuous-camera
 retargeting, live capture preview, saved-file discovery, tab rename/cancel behavior,
 annotation schema validation, grouped clipboard/undo, and activation over a private
 D-Bus server plus JavaScript evaluation against an owned workspace fixture.
+
+## v0.9 follow-up: playback flow and rectangle notes
+
+Replace standalone note cards with a single tinted rectangle around each selected
+group. The rectangle opens an autosaved Group inspector with name, color and text;
+mouse gestures distinguish opening notes from box-selecting. Version 4 stores
+group explanations, while legacy cards migrate in memory without changing inputs
+or writing source files. Undo, clipboard and document switching preserve the data.
+
+Connections share the authoritative playback trace and animate active transitions.
+Only visible streams repaint; pause, stop and hidden pages release their animation
+timers. The camera follows the newest event independently of held inputs, clamps
+at targets, preserves its target during responsive reflow, and ignores stale
+selection reveals when the result banner changes the viewport. A + beside tabs
+completes the new-document affordance. Metadata edits preserve debug results.
+
+Regression coverage includes bottom-of-canvas follow, grid resizing, click/drag
+group interaction, invalid-draft tab guards, group notes persistence/copy/Undo and
+scrollable small-window properties. Game input backends are unchanged by this work.

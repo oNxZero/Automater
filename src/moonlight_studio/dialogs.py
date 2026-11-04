@@ -81,47 +81,8 @@ class NameDialog(QDialog):
         return dialog.name.text().strip() if dialog.exec() == QDialog.Accepted else None
 
 
-class NoteDialog(QDialog):
-    def __init__(self, parent, title="Note", text=""):
-        super().__init__(parent)
-        self.setWindowTitle("Workflow note")
-        self.setMinimumSize(460, 360)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(14)
-        layout.addWidget(label("Explain this part of your workflow", "heading"))
-        layout.addWidget(label("Notes are visual only. They never send input or add a delay."))
-        self.title = QLineEdit(title)
-        self.title.setMaxLength(120)
-        self.title.setPlaceholderText("Note title")
-        self.title.setAccessibleName("Note title")
-        layout.addWidget(self.title)
-        self.text = QTextEdit()
-        self.text.setAcceptRichText(False)
-        self.text.setPlainText(text)
-        self.text.setPlaceholderText("What happens here? Include useful context or instructions…")
-        self.text.setAccessibleName("Note text")
-        layout.addWidget(self.text, 1)
-        self.limit = label("")
-        layout.addWidget(self.limit)
-        actions = QHBoxLayout()
-        actions.addStretch()
-        actions.addWidget(button("Cancel", self.reject, "ghost"))
-        self.save = button("Save note", self.accept, "primary", glyph="check")
-        self.save.setDefault(True)
-        actions.addWidget(self.save)
-        layout.addLayout(actions)
-        self.text.textChanged.connect(self.validate_text)
-        self.validate_text()
-
-    def validate_text(self):
-        count = len(self.text.toPlainText())
-        self.limit.setText(f"{count:,} / 4,000 characters")
-        self.save.setEnabled(count <= 4000)
-
-
 class GroupDialog(NameDialog):
-    def __init__(self, parent, name="", color="#b5a4fa"):
+    def __init__(self, parent, name="", color="#b5a4fa", notes=""):
         super().__init__(
             parent,
             "Name this group",
@@ -141,3 +102,21 @@ class GroupDialog(NameDialog):
             self.color.addItem(title, value)
         self.color.setCurrentIndex(max(0, self.color.findData(color)))
         self.layout().insertWidget(self.layout().count() - 1, self.color)
+        self.notes = QTextEdit()
+        self.notes.setAcceptRichText(False)
+        self.notes.setPlainText(notes)
+        self.notes.setPlaceholderText("Explain the actions inside this rectangle…")
+        self.notes.setAccessibleName("Notes for this group")
+        self.notes.setMinimumHeight(160)
+        self.layout().insertWidget(self.layout().count() - 1, label("Group notes"))
+        self.layout().insertWidget(self.layout().count() - 1, self.notes)
+        self.note_limit = label("")
+        self.layout().insertWidget(self.layout().count() - 1, self.note_limit)
+        self.notes.textChanged.connect(self.validate_notes)
+        self.name.textChanged.connect(self.validate_notes)
+        self.validate_notes()
+
+    def validate_notes(self, *_):
+        count = len(self.notes.toPlainText())
+        self.note_limit.setText(f"{count:,} / 20,000 characters")
+        self.confirm.setEnabled(bool(self.name.text().strip()) and count <= 20000)

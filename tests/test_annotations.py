@@ -10,7 +10,7 @@ from moonlight_studio.models import Script, Step
 from moonlight_studio.storage import load, save
 
 
-def annotated():
+def legacy_annotated():
     return Script(
         "Documented routine",
         steps=[
@@ -29,13 +29,17 @@ def annotated():
     )
 
 
+def annotated():
+    return legacy_annotated().migrate_note_cards()
+
+
 def test_notes_groups_round_trip_and_old_workflows_stay_compatible(tmp_path):
     script = annotated()
     path = tmp_path / "annotated.json"
     save(script, path)
     restored = load(path)
     assert restored.to_dict() == script.to_dict()
-    assert restored.version == 3 and restored.duration_ms == 10
+    assert restored.version == 4 and restored.duration_ms == 10
     plain = Script(steps=[Step(20)])
     assert plain.to_dict()["version"] == 1
     assert "groups" not in plain.to_dict()
@@ -68,7 +72,7 @@ def test_note_limits_and_visual_only_timing_are_validated():
 def test_replay_skips_notes_and_keeps_input_rows_and_counts():
     backend = Backend()
     replay = Replay(lambda: backend)
-    replay.start(annotated(), PlaybackOptions(countdown=0))
+    replay.start(legacy_annotated(), PlaybackOptions(countdown=0))
     assert replay.join()
     assert [s.action for s in backend.events] == ["key_down", "key_up"]
     assert replay.timeline["enabled_events"] == replay.timeline["completed_events"] == 2
@@ -85,7 +89,7 @@ def test_grouped_clipboard_clones_identities_and_keeps_notes_and_input():
     copies, copied_groups = clone_selection(steps, groups)
     assert set(copied_groups).isdisjoint(groups)
     assert [s.action for s in copies] == [s.action for s in steps]
-    assert copies[0].text == steps[0].text
+    assert next(iter(copied_groups.values()))["notes"] == next(iter(groups.values()))["notes"]
     assert copies[1].group_id == copies[0].group_id
     assert Script(steps=copies, groups=copied_groups).validate()
 
@@ -97,8 +101,9 @@ def test_group_rename_remove_and_undo_are_atomic(qtbot, tmp_path, monkeypatch):
     win.group_selection("Enter text", "#75d6c0")
     assert len(win.model.groups) == 1
     assert (
-        len(win.workflow.canvas.group_items) == 2
-    )  # Two spans; the unselected timer stays outside.
+        len(win.workflow.canvas.group_items) == 1
+    )  # One rectangular backdrop; membership still excludes the unselected timer.
+    assert not win.model.steps[2].group_id
     grouped = win.script().to_dict()
     win.group_selection("Close program", "#83b8f2")
     assert next(iter(win.model.groups.values()))["name"] == "Close program"
@@ -114,20 +119,23 @@ def test_group_rename_remove_and_undo_are_atomic(qtbot, tmp_path, monkeypatch):
     clean(win)
 
 
-def test_note_inspector_edits_text_without_input_or_delay(qtbot, tmp_path, monkeypatch):
+def test_group_notes_edit_without_inserting_or_changing_actions(qtbot, tmp_path, monkeypatch):
     win = window(qtbot, tmp_path, monkeypatch)
-    win.insert_steps([Step(0, "note", title="Explanation", text="Original")], row=0)
-    ins = win.action_inspector
-    assert ins.note_fields.isVisible()
-    assert not ins.rerecord_btn.isVisible()
-    ins.note_title.setText("Enter text")
-    ins.note_text.setPlainText("<b>Literal text</b>\nUse the correct keyboard layout.")
-    ins.apply()
-    assert win.model.steps[0].title == "Enter text"
-    assert win.model.steps[0].text.startswith("<b>")
-    assert win.model.steps[0].delay_ms == 0
+    win.workflow.canvas.choose_indices({0, 2})
+    win.group_selection("Explanation", notes="Original")
+    identity = next(iter(win.model.groups))
+    before = list(win.model.steps)
+    win.inspect_group(identity)
+    ins = win.group_inspector
+    assert ins.fields.isVisible()
+    ins.name.setText("Enter text")
+    ins.text.setPlainText("<b>Literal text</b>\nUse the correct keyboard layout.")
+    assert ins.flush()
+    assert win.model.groups[identity]["name"] == "Enter text"
+    assert win.model.groups[identity]["notes"].startswith("<b>")
+    assert win.model.steps == before
     win.undo.undo()
-    assert win.model.steps[0].text == "Original"
+    assert win.model.groups[identity]["notes"] == "Original"
     clean(win)
 
 

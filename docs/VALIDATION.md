@@ -1,11 +1,11 @@
-# Verification of v0.8
+# Verification of v0.9
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
 Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **239 automated tests passed**, including offscreen Qt workflows and five live X11
+- **259 automated tests passed**, including offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Reproduced a Qt/PySide6 6.12.0 reference-count crash during repeated painting on
@@ -209,3 +209,30 @@ into /tmp for testing only; no system packages or input permissions were changed
 - Foreground activation still uses the normal desktop pointer/keyboard. Independent
   background input remains X11 best effort or a separate game session. Physical
   compositor/game acceptance is still a manual check.
+
+## v0.9 verification
+
+- Both Python 3.11 and 3.14 passed the complete 259-test suite, including normal
+  interpreter exit. Twenty new regressions cover colored/animated connectors,
+  stopped/paused/loop-gap states, older held keys, target overshoot, last-run banner
+  resize, responsive reflow while following, adjacent + tab creation, one group
+  rectangle across rows, actual background click versus box-drag gestures, note
+  drafts across edits/save/copy/tab changes, last-run retention and legacy migration.
+  Wrapped group headings stay distinct/clickable, and pending notes participate in
+  toolbar Undo/Redo and Duplicate.
+- The Group inspector was checked at 1000×680 with a usable scrolling text editor,
+  and the workflow at 1440×900 and 3440×1440. The wide canvas uses 12 columns.
+  Screenshots: [group notes](group-notes.png), [playback arrows](flow-playback.png),
+  [workspace](editor.png) and [wide grid](wide-workflow.png).
+- A shutdown SIGSEGV was reproduced with a standalone Python-created QMimeData on
+  Qt's clipboard. GDB traced destruction through Shiboken after Python shutdown.
+  Copy now uses Qt-owned text data with the same validated JSON envelope; the child
+  process regression copies through the real editor and exits without clearing
+  the clipboard. Older custom-MIME selections remain readable.
+- Metadata edits retain raw events, multi-selection, viewport and completed-run
+  markers. Invalid group drafts preserve their text and active tab. Legacy note
+  migration preserves input timing/order and leaves source files unchanged until
+  explicitly saved. Version 4 carries group notes and never silently downgrades.
+- Lint/format checks and source/wheel builds pass. Distribution contents include
+  the new modules and exclude personal workflow JSON files. No physical input,
+  host-window activation or game launch was needed for this UI update.

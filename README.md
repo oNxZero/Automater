@@ -10,7 +10,7 @@ Record your keyboard and mouse. Shape the sequence visually. Run it your way.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Studio-v0.8-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Studio-v0.9-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 
 A native Python desktop app inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
@@ -35,7 +35,32 @@ Your original input samples and timings stay available in the **Events** view.
 | Click a card to edit its properties | Pause, resume and F12 emergency stop | Atomic saves and autosave recovery |
 | Insert between cards; duplicate or reorder | Watch the active action during replay | Undo / redo up to 50 event edits |
 
-## New in v0.8: a workspace that fits your routine
+## New in v0.9: follow the flow, explain each section
+
+- **Animated playback arrows:** connections light up as inputs progress. A moving
+  stream shows the current transition; completed connections keep their color.
+  Pause and Stop freeze the animation and retain the result.
+- **Stable playback camera:** following tracks the latest input without jumping
+  back to an older held key. It stops cleanly at scroll limits, retains the target
+  while the grid reflows, and keeps its place when the last-run banner appears.
+- **A + beside your tabs:** create a new workflow right where your open tabs are.
+  Ctrl+T and right-click tab actions remain available.
+- **Rectangle notes:** select actions and press **Ctrl+G** to place one colored
+  rectangle behind them. Give it a name, color and explanation. Click its header
+  or background to edit its notes in the **Group** panel. **Ctrl+Shift+N** opens
+  notes for the selection; **Ctrl+Shift+G** ungroups.
+- **Inline note cards removed:** explanations live on groups. Older note cards
+  migrate to group notes when opened, preserving input order and timing. Source
+  files change only when you save. Note-only files retain their text as an imported
+  workflow description.
+- **Safer metadata edits:** group notes save into the document automatically,
+  survive tab changes, participate in Undo and copy/paste, and preserve last-run
+  highlights. The notes panel scrolls at smaller window sizes.
+
+![Notes on a colored group rectangle](docs/group-notes.png)
+![Colored workflow connections during playback](docs/flow-playback.png)
+
+## Introduced in v0.8: a workspace that fits your routine
 
 - **Responsive grid:** columns adapt to window width, zoom and the inspector. A
   wide monitor uses its available space; resizing keeps your place in the routine.
@@ -52,10 +77,9 @@ Your original input samples and timings stay available in the **Events** view.
 - **Live recording preview:** see recent captured actions, elapsed time, event count
   and held keys while recording. Finish with F6 to add them; Discard keeps your
   previous workflow. The preview never writes partial captures into the undo stack.
-- **Notes and visual groups:** add a Note / text card or use Ctrl+Shift+N. Select
-  actions and press Ctrl+G to create a named, colored group; Ctrl+Shift+G ungroups.
-  Click a group header to select its members. Notes and borders are visual only;
-  copy/paste, editing, save/recovery and Undo preserve their metadata.
+- **Visual groups:** select actions and press Ctrl+G to create a named, colored
+  category. v0.9 replaces standalone note cards with notes attached to the group's
+  rectangle. Borders and explanations do not execute inputs or add playback time.
 - **Clear save state:** unsaved changes sit beside the workflow summary. A custom
   Save / Discard / Keep editing dialog replaces the system question prompt.
 - **Bring your app forward:** desktop playback can restore and focus the selected
@@ -267,7 +291,7 @@ physical input access separately.
 | **Action inspector** | Edit the selected action, apply changes, duplicate, delete or move it. |
 | **Run inspector** | Choose desktop, an existing X11 window, or a separate game session; speed, repeats, loop gap and Test mode. |
 | **Start inspector** | Configure the initial countdown and the per-loop cursor reset. |
-| **Notes inspector** | Remember game bindings, starting position and camera direction. |
+| **Group inspector** | Name/color a selected section and explain it with group notes. |
 
 **Canvas controls:** Ctrl-click adds/removes actions from selection; Shift-click
 selects a range, and left-drag on empty canvas box-selects. Scroll horizontally with the mouse wheel; middle-drag the background
@@ -302,6 +326,8 @@ recovery and common questions.
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo event edits |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste selected actions |
 | Ctrl+D / Ctrl+A | Duplicate / select the whole workflow |
+| Ctrl+G / Ctrl+Shift+G | Group / ungroup selected actions |
+| Ctrl+Shift+N | Open notes for the selection, or create its group |
 | Esc | Clear selection |
 | Shift + arrows / left-drag empty space | Extend selection / box-select |
 | Ctrl+wheel / Ctrl+0 | Zoom / fit |
@@ -419,9 +445,10 @@ they are not screen-coordinate recordings. Scripts have a 200,000-step limit.
 Device selections and run/capture preferences are saved privately in `preferences.json`.
 Window handles are never restored across restarts. These preferences are per application;
 existing version-1 macro files remain readable. Scripts using advanced controls or
-starting coordinates are saved in version 2. Notes and named visual groups use
-version 3 and require Studio v0.8 or newer. Plain version-1/2 workflows retain their
-format when those features are unused.
+starting coordinates are saved in version 2. Named visual groups use version 3;
+group explanations use version 4 and require Studio v0.9 or newer. Older inline
+note cards convert to group notes when opened. Plain version-1/2 workflows retain
+their format when newer features are unused; explicitly loaded versions are retained.
 
 Configuration lives in `$XDG_CONFIG_HOME/moonlight-studio` (normally
 `~/.config/moonlight-studio`). Saved library scripts are under `scripts/`;

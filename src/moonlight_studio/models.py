@@ -114,8 +114,8 @@ class Script:
     groups: dict = field(default_factory=dict)
 
     def validate(self):
-        if type(self.version) is not int or self.version not in (1, 2, 3):
-            raise ValueError("Unsupported script version; expected version 1, 2 or 3")
+        if type(self.version) is not int or self.version not in (1, 2, 3, 4):
+            raise ValueError("Unsupported script version; expected version 1, 2, 3 or 4")
         if not isinstance(self.name, str) or not 1 <= len(self.name.strip()) <= 120:
             raise ValueError("Script name must contain 1–120 characters")
         if not isinstance(self.notes, str) or len(self.notes) > 20_000:
@@ -129,7 +129,10 @@ class Script:
         for identity, group in self.groups.items():
             if not isinstance(identity, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", identity):
                 raise ValueError("Invalid workflow group identity")
-            if not isinstance(group, dict) or set(group) != {"name", "color"}:
+            if not isinstance(group, dict) or set(group) not in (
+                {"name", "color"},
+                {"name", "color", "notes"},
+            ):
                 raise ValueError("Invalid workflow group fields")
             if not isinstance(group["name"], str) or not 1 <= len(group["name"].strip()) <= 120:
                 raise ValueError("Group names must contain 1–120 characters")
@@ -137,6 +140,8 @@ class Script:
                 r"#[0-9a-fA-F]{6}", group["color"]
             ):
                 raise ValueError("Choose a valid group color")
+            if not isinstance(group.get("notes", ""), str) or len(group.get("notes", "")) > 20000:
+                raise ValueError("Group notes must contain at most 20,000 characters")
         if any(step.group_id and step.group_id not in self.groups for step in self.steps):
             raise ValueError("Workflow contains an undefined visual group")
         if self.start is not None:
@@ -155,6 +160,56 @@ class Script:
             if self.start["space"] not in ("desktop", "window"):
                 raise ValueError("Invalid starting coordinate space")
         return self
+
+    def migrate_note_cards(self):
+        """Move legacy card text onto an adjacent action's group, preserving inputs."""
+        from dataclasses import replace
+        from uuid import uuid4
+
+        if not any(step.action == "note" for step in self.steps):
+            return self
+        steps = [step for step in self.steps if step.action != "note"]
+        groups = {key: dict(value) for key, value in self.groups.items()}
+        after, note_parts = 0, []
+        existing_members = {value.group_id for value in steps if value.group_id}
+        for step in self.steps:
+            if step.action != "note":
+                after += 1
+                continue
+            text = (step.title + "\n" + step.text).strip()
+            if not steps:
+                note_parts.append(text)
+                continue
+            index = min(after, len(steps) - 1)
+            identity = (
+                (step.group_id if step.group_id in existing_members else "")
+                or steps[index].group_id
+                or step.group_id
+                or uuid4().hex
+            )
+            metadata = groups.setdefault(
+                identity, {"name": step.title or "Imported notes", "color": "#e8c58a"}
+            )
+            combined = "\n\n".join(value for value in (metadata.get("notes", ""), text) if value)
+            if len(combined) > 20000:
+                note_parts.append(text)
+            else:
+                metadata["notes"] = combined
+            if identity not in existing_members:
+                steps[index] = replace(steps[index], group_id=identity)
+                existing_members.add(identity)
+        notes = "\n\n".join(value for value in (self.notes, *note_parts) if value)
+        if len(notes) > 20000:
+            raise ValueError(
+                "Imported note text exceeds the workflow description limit; the original file has not been changed"
+            )
+        used = {step.group_id for step in steps if step.group_id}
+        return replace(
+            self,
+            steps=steps,
+            groups={key: value for key, value in groups.items() if key in used},
+            notes=notes,
+        ).validate()
 
     @property
     def duration_ms(self):
@@ -186,11 +241,16 @@ class Script:
             or KEY_CODES.get(s.code, 0) >= ecodes.BTN_TRIGGER
             for s in self.steps
         ):
-            data["version"] = 2
+            data["version"] = max(data["version"], 2)
         if self.groups or any(
             s.action == "note" or s.group_id or s.title or s.text for s in self.steps
         ):
-            data["version"] = 3
+            data["version"] = max(data["version"], 3)
+        if any(group.get("notes") for group in self.groups.values()):
+            data["version"] = max(data["version"], 4)
+        for group in data["groups"].values():
+            if not group.get("notes"):
+                group.pop("notes", None)
         if data["version"] < 3:
             data.pop("groups")
         for step in data["steps"]:
@@ -219,4 +279,8 @@ class Script:
             raise ValueError("Script requires a version and a steps array")
         if len(data["steps"]) > MAX_STEPS:
             raise ValueError("Script is too large")
-        return cls(**{**data, "steps": [Step.from_dict(s) for s in data["steps"]]}).validate()
+        return (
+            cls(**{**data, "steps": [Step.from_dict(s) for s in data["steps"]]})
+            .validate()
+            .migrate_note_cards()
+        )

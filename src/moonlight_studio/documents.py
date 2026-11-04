@@ -32,8 +32,13 @@ class DocumentsMixin:
     def stash_document(self):
         doc = self.documents.get(self.active_document_id)
         if doc is None:
-            return
-        doc.script, doc.path, doc.saved = self.script(), self.path, self.saved_snapshot
+            return True
+        try:
+            script = self.script()
+        except ValueError as exc:
+            self.show_error(str(exc))
+            return False
+        doc.script, doc.path, doc.saved = script, self.path, self.saved_snapshot
         doc.last_run = self.last_run
         canvas = self.workflow.canvas
         doc.view = {
@@ -46,6 +51,7 @@ class DocumentsMixin:
             "events": self.events_btn.isChecked(),
             "inspector": not self.inspector_panel.isHidden(),
             "inspector_tab": self.inspector_stack.currentIndex(),
+            "group": self.group_inspector.identity,
             "speed": self.speed.value(),
             "repeats": self.repeats.value(),
             "countdown": self.countdown.value(),
@@ -60,6 +66,7 @@ class DocumentsMixin:
                 storage.save(doc.script, doc.recovery)
             except (OSError, ValueError) as exc:
                 self.show_error(f"Autosave unavailable: {exc}")
+        return True
 
     def update_document_title(self, dirty=None):
         if self.active_document_id is None:
@@ -94,12 +101,15 @@ class DocumentsMixin:
 
     def document_action(self, index, callback):
         self.document_tabs.setCurrentIndex(index)
-        callback()
+        if self.active_document_id == self.document_id(index):
+            callback()
 
     def rename_document(self, index, name=None):
         if self.busy or index < 0:
             return
         self.document_tabs.setCurrentIndex(index)
+        if self.active_document_id != self.document_id(index):
+            return
         if name is None:
             name = NameDialog.ask(
                 self,
@@ -165,8 +175,9 @@ class DocumentsMixin:
     def load_script(self, script, path=None, recovery=None):
         if self.busy:
             return
-        script.validate()
-        self.stash_document()
+        script = script.validate().migrate_note_cards()
+        if not self.stash_document():
+            return
         if path is not None:
             path = Path(path)
             for index in range(self.document_tabs.count()):
@@ -202,8 +213,15 @@ class DocumentsMixin:
         identifier = self.document_id(index)
         if identifier is None or identifier == self.active_document_id or self.busy:
             return
-        if stash:
-            self.stash_document()
+        if stash and not self.stash_document():
+            for current in range(self.document_tabs.count()):
+                if self.document_id(current) == self.active_document_id:
+                    self.document_tabs.blockSignals(True)
+                    self.document_tabs.setCurrentIndex(current)
+                    self.document_tabs.blockSignals(False)
+                    break
+            return
+        self.group_inspector.select(None, None)
         self.active_document_id = identifier
         doc = self.documents[identifier]
         self.undo.setActiveStack(doc.undo)
@@ -247,6 +265,9 @@ class DocumentsMixin:
                 open_inspector=False,
                 preserve_table=view["events"],
             )
+            identity = view.get("group")
+            if identity in self.model.groups:
+                self.group_inspector.select(identity, self.model.groups[identity])
             self.inspector_panel.setVisible(view["inspector"])
             self.inspector_stack.setCurrentIndex(view["inspector_tab"])
             self.inspector_buttons[view["inspector_tab"]].setChecked(True)
@@ -279,6 +300,8 @@ class DocumentsMixin:
         identifier = self.document_id(index)
         previous = self.active_document_id
         self.document_tabs.setCurrentIndex(index)
+        if self.active_document_id != identifier:
+            return
         if not self.confirm_discard():
             for other in range(self.document_tabs.count()):
                 if self.document_id(other) == previous:
@@ -302,7 +325,8 @@ class DocumentsMixin:
             self.load_script(Script())
 
     def confirm_close_documents(self):
-        self.stash_document()
+        if not self.stash_document():
+            return False
         for index in range(self.document_tabs.count()):
             self.document_tabs.setCurrentIndex(index)
             if not self.confirm_discard():

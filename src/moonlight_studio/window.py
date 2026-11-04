@@ -160,9 +160,10 @@ class MainWindow(
         self.setStyleSheet(STYLE)
         self.build_ui()
         self.restore_preferences()
+        self.model.beforeChange.connect(self.group_inspector.flush)
         self.model.changed.connect(self.edited)
         self.model.changed.connect(self.refresh_workflow)
-        self.model.changed.connect(
+        self.model.inputChanged.connect(
             lambda: self.clear_run_feedback(force=True) if not self.loading else None
         )
         self.name.textChanged.connect(self.edited)
@@ -312,7 +313,7 @@ class MainWindow(
         for key, callback in (
             ("Ctrl+N", self.new_script),
             ("Ctrl+T", self.new_script),
-            ("Ctrl+Shift+N", self.compose_note),
+            ("Ctrl+Shift+N", self.edit_selection_notes),
             ("Ctrl+W", lambda: self.close_document(self.document_tabs.currentIndex())),
             (
                 "Ctrl+Tab",
@@ -329,8 +330,8 @@ class MainWindow(
             ("Ctrl+O", self.open_script),
             ("Ctrl+S", self.save_script),
             ("Ctrl+Shift+S", self.save_as),
-            ("Ctrl+Z", self.undo.undo),
-            ("Ctrl+Shift+Z", self.undo.redo),
+            ("Ctrl+Z", lambda: self.group_inspector.flush() and self.undo.undo()),
+            ("Ctrl+Shift+Z", lambda: self.group_inspector.flush() and self.undo.redo()),
         ):
             action = QAction(self)
             action.setShortcut(QKeySequence(key))
@@ -341,6 +342,8 @@ class MainWindow(
         # Global F-key controls come only from evdev. Qt bindings would double-fire.
 
     def script(self):
+        if not self.group_inspector.flush():
+            raise ValueError("Group notes need a name and at most 20,000 characters")
         script = Script(
             self.name.text().strip() or "Untitled script",
             self.notes.toPlainText(),

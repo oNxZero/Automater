@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from .editor import EventTable, StepDelegate
+from .group_inspector import GroupNotesInspector
 from .inspector import ActionInspector
 from .live_preview import RecordingPreview
 from .theme import ACCENT, icon
@@ -115,7 +116,7 @@ def build_ui(w):
         ("Duplicate\tCtrl+D", "duplicate"),
         ("Select all\tCtrl+A", "select_all"),
         ("Delete\tDelete", "delete"),
-        ("Add workflow note…\tCtrl+Shift+N", "note"),
+        ("Notes for selected group…\tCtrl+Shift+N", "group_notes"),
         ("Group selection…\tCtrl+G", "group"),
         ("Ungroup selection\tCtrl+Shift+G", "ungroup"),
         ("Randomize selected timing…", "randomize"),
@@ -150,9 +151,13 @@ def build_ui(w):
     w.document_tabs.tabBarDoubleClicked.connect(w.rename_document)
     w.document_tabs.currentChanged.connect(w.activate_document)
     w.document_tabs.tabCloseRequested.connect(w.close_document)
-    tabs.addWidget(w.document_tabs, 1)
-    w.new_tab_btn = button("", w.new_script, "ghost", "New workflow tab · Ctrl+T", "plus")
+    tabs.addWidget(w.document_tabs)
+    w.new_tab_btn = button("+", w.new_script, "ghost", "New workflow tab · Ctrl+T")
+    w.new_tab_btn.setFixedSize(36, 36)
+    w.new_tab_btn.setAccessibleName("New workflow tab · Ctrl+T")
+    w.new_tab_btn.setStyleSheet("font-size: 22px; padding: 0;")
     tabs.addWidget(w.new_tab_btn)
+    tabs.addStretch(1)
     w.workspace_header = QWidget()
     w.title_row = QHBoxLayout(w.workspace_header)
     w.title_row.setContentsMargins(0, 8, 0, 4)
@@ -219,8 +224,10 @@ def build_ui(w):
     w.record_preview = RecordingPreview()
     workspace_layout.addWidget(w.record_preview)
     toolbar = w.title_row
-    w.undo_btn = button("", w.undo.undo, "ghost", "Undo · Ctrl+Z", "undo")
-    w.redo_btn = button("", w.undo.redo, "ghost", "Redo · Ctrl+Shift+Z", "redo")
+    w.undo_btn = button("", lambda: w.workflow_command("undo"), "ghost", "Undo · Ctrl+Z", "undo")
+    w.redo_btn = button(
+        "", lambda: w.workflow_command("redo"), "ghost", "Redo · Ctrl+Shift+Z", "redo"
+    )
     w.undo_btn.setEnabled(False)
     w.redo_btn.setEnabled(False)
     w.undo.canUndoChanged.connect(w.update_undo_actions)
@@ -313,7 +320,7 @@ def build_ui(w):
     tabs.setSpacing(3)
     w.inspector_group = QButtonGroup(w)
     w.inspector_buttons = []
-    for i, name in enumerate(("Action", "Run", "Start", "Notes")):
+    for i, name in enumerate(("Action", "Run", "Start", "Group")):
         tab = segment(name, lambda checked=False, p=i: w.show_inspector(p), w.inspector_group)
         tab.setStyleSheet("padding: 6px 5px; font-size: 12px;")
         tabs.addWidget(tab)
@@ -327,19 +334,14 @@ def build_ui(w):
     w.inspector_stack.addWidget(w.action_inspector)
     w.inspector_stack.addWidget(build_run_settings(w))
     w.inspector_stack.addWidget(build_start_settings(w))
-    notes_page = QWidget()
-    notes = QVBoxLayout(notes_page)
-    notes.setContentsMargins(0, 0, 0, 0)
-    notes.addWidget(label("WORKFLOW NOTES", "eyebrow"))
-    notes.addWidget(label("Remember the starting point", "heading"))
-    notes.addWidget(
-        label("Add game bindings, camera position, or anything to check before replay.")
+    w.group_inspector = GroupNotesInspector()
+    w.group_inspector.applied.connect(w.save_group_notes)
+    w.group_inspector.command.connect(w.handle_group_command)
+    w.group_inspector.draftChanged.connect(
+        lambda: (w.saved_badge.show(), w.update_document_title(True))
     )
-    w.notes = QTextEdit()
-    w.notes.setPlaceholderText("e.g. Start at the north gate, facing the stairs…")
-    w.notes.setAccessibleName("Script notes")
-    notes.addWidget(w.notes, 1)
-    w.inspector_stack.addWidget(notes_page)
+    w.notes = w.group_inspector.imported_notes
+    w.inspector_stack.addWidget(scrollable(w.group_inspector))
     ins_layout.addWidget(w.inspector_stack, 1)
     split.addWidget(inspector)
     split.setSizes([850, 290])

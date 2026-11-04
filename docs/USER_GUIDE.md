@@ -143,10 +143,12 @@ picks up files added outside Studio. Only valid workflow JSON appears; preferenc
 and recovery files stay out of the list. Import opens an
 existing JSON script. Existing version-1 files remain readable. Advanced controls, timing ranges and
 starting points use version 2 when saved; they require Studio v0.4 or newer.
-Notes and named groups use version 3 and require v0.8 or newer. Existing files are
-not rewritten when Library indexes them.
+Named groups use version 3; group explanations use version 4 and require v0.9 or
+newer. Existing files are not rewritten when Library indexes them or converts
+older inline note cards for display. Save explicitly to persist the conversion.
 
-**Notes** stores starting position, camera direction, bindings and reminders.
+**Group** stores starting position, camera direction, bindings and reminders for
+each selected section.
 An unsaved-change badge appears in the header. Idle edits are autosaved every five
 seconds; startup offers recovery after an interrupted session. Saved workflows
 are never silently replaced by recovery. Closing a changed tab or quitting prompts before discarding
@@ -167,7 +169,7 @@ are planned separately; drawing a connection does not create unsupported logic.
 
 **Why did my mouse path land elsewhere?** Movement is relative, so starting position,
 camera sensitivity, acceleration and game bindings matter. Put those assumptions
-in Notes. This release does not record absolute screen positions.
+in group notes. This release does not record absolute screen positions.
 
 **Will a game accept background input?** Test it on that game. Desktop uinput and
 directed X11 window messages have different compatibility. The test receiver proves
@@ -339,23 +341,31 @@ The editable workflow title inside a JSON file remains independent of its filena
 
 ## Add explanations and visual categories
 
-Choose **Add action → Note / text…**, **Edit → Add workflow note**, or press
-**Ctrl+Shift+N**. Enter a title and plain text. Click the note later to edit it in
-the inspector, drag to move it, or copy/delete it like another card. Notes never
-emit keyboard/mouse input and never add time to playback. The canvas shows a short
-preview; the inspector retains the complete explanation (up to 4,000 characters).
+Select cards with Ctrl-click, Shift-click or a left-drag selection box. Click
+**Group**, press **Ctrl+G**, or choose Group selection in the context menu. Give
+the section a name, color and optional explanation. One translucent rectangle
+surrounds all its members, including across grid rows. For a nonadjacent selection,
+the rectangle can enclose other cards; only the selected cards belong to the group.
+Grouping never reorders actions, changes timing or adds execution logic.
 
-Select cards, then click **Group**, use **Ctrl+G**, or choose Group selection in the
-context menu. Name the category and choose its color. A border surrounds the
-selected actions; a group spanning grid rows repeats its heading on each row.
-Nonadjacent selections retain their order and get separate border segments,
-without enclosing the unselected actions between them. These are visual categories,
-not loops or executable branches.
+Click the rectangle's background or heading to select its members and open the
+**Group** panel. Edit its name, color or plain-text notes (up to 20,000 characters).
+Changes save into the document after a short pause; **Save group notes** applies
+immediately. Save the workflow to write them to its JSON file. **Ctrl+Shift+N**
+opens notes for the selected group, or creates a group for ungrouped actions.
+Dragging across a rectangle still box-selects actions; middle-drag still pans.
 
-Click a group header to select every member. Right-click it to rename/change color
-or ungroup. **Ctrl+Shift+G** removes selected actions from their groups. Group changes
-and note edits are undoable; copy/paste between tabs copies the required metadata
-and creates independent group identities.
+Right-click the rectangle for Open group notes, Select group actions and Remove
+group. **Ctrl+Shift+G** removes selected actions from their groups. Group changes
+and note edits are undoable; copy/paste between tabs copies their metadata and
+creates independent identities. Editing names, colors or notes preserves last-run
+highlights. Editing executable input clears those results.
+
+Standalone note cards are no longer offered. Older cards convert to nearby group
+notes on opening without changing recorded input timing/order. A file containing
+only notes retains them as an imported workflow description in the Group panel.
+
+![Group rectangles and their notes](group-notes.png)
 
 ## Live capture preview
 
@@ -369,6 +379,7 @@ in memory, so finish the recording before closing Studio.
 
 ## Manage tabs and unsaved changes
 
+Click **+** beside the tabs, or press **Ctrl+T**, for a new workflow.
 Right-click a tab for Rename, Save, Save as, Close workflow and Close other workflows.
 Double-click a tab to rename it. Renaming a saved workflow moves its JSON file within
 the same folder, refuses an existing destination, and keeps unsaved edits in memory.
@@ -389,7 +400,14 @@ layout reflows after a pointer gesture finishes, keeping dragging and box select
 stable while properties open. Selection and raw input data do not change.
 
 Playback uses a continuously updated camera with retained velocity when targets
-change. It stays separate from replay timing. Turn **Follow playback** off to pan
+change and clamped motion at scroll limits. It follows the newest dispatched input
+while older held inputs keep their own highlights. It stays separate from replay
+timing. Turn **Follow playback** off to pan
 freely, then turn it on to return to the current action. Shorter-than-frame inputs
 are represented by the latest worker snapshot; the UI cannot display every physical
 event as a separate rendered frame.
+
+Connections follow the same worker snapshot: completed inputs leave colored
+arrows, and a moving stream points toward the current action or next waiting input.
+Pause and Stop freeze that stream. Shorter-than-frame transitions can be skipped
+visually while their final completion colors remain visible.

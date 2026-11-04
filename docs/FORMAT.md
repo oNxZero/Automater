@@ -1,4 +1,4 @@
-# Script formats v1 and v2
+# Script formats v1–v4
 
 Files use UTF-8 JSON and include `version` and a `steps` array. Existing v1 scripts
 remain compatible. Advanced controls save as v2 and require Studio v0.4 or newer.
@@ -68,3 +68,30 @@ loop, with releases at each loop boundary. Test mode does not move any pointer.
 
 Plain scripts continue saving as v1; ranges, standalone controls, extended keys or
 starting coordinates trigger v2. Explicitly loaded v2 files retain their version.
+
+## Versions 3 and 4: visual groups and explanations
+
+Version 3 adds an optional top-level `groups` object. Each key is a group identity
+(1–64 characters); metadata contains a `name` (1–120 characters) and `color`
+(`#RRGGBB`). Steps reference their category with `group_id`; unused definitions
+are pruned when editing. Groups never change input order or timing.
+
+Version 4 adds optional plain-text `notes` to each group (at most 20,000 characters).
+Nonempty group notes require Studio v0.9 or newer. For example:
+
+```json
+"groups": {
+  "setup": {
+    "name": "Open menu",
+    "color": "#83b8f2",
+    "notes": "Check that the interaction menu is ready before continuing."
+  }
+}
+```
+
+The `action: "note"`, `title` and `text` fields from the older inline-card design
+remain accepted for import. Loading converts those cards into nearby group notes,
+or retains note-only files in the workflow's top-level description. Input events,
+timing and order remain unchanged; reading never overwrites the source file.
+The current editor does not create standalone note cards. Explicit file versions
+are retained even if their newer optional fields are absent.

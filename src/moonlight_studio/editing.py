@@ -3,7 +3,7 @@
 from bisect import bisect_right
 from dataclasses import replace
 
-from PySide6.QtCore import QItemSelection, QItemSelectionModel, QMimeData
+from PySide6.QtCore import QItemSelection, QItemSelectionModel
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMenu, QMessageBox
 
@@ -18,18 +18,28 @@ from .actions import (
     encode_steps,
     randomize_steps,
 )
-from .models import MAX_STEPS
+from .models import MAX_STEPS, Script
 from .theme import icon
 from .workflow import blocks_for
 
 
 class EditingMixin:
     def refresh_workflow(self):
+        previous_rows = self.selected_rows() if not self.model.last_runtime_changed else None
         self.blocks = blocks_for(self.model.steps)
         row = min(self.selection_anchor, len(self.model.steps) - 1)
-        self.workflow.canvas.rebuild(self.blocks, row, self.model.groups)
+        self.workflow.canvas.rebuild(
+            self.blocks, row, self.model.groups, preserve_view=not self.model.last_runtime_changed
+        )
         if self.pending_rows is not None:
             rows, self.pending_rows = self.pending_rows, None
+            indices = {
+                max(0, bisect_right(self.workflow.canvas.starts, r) - 1)
+                for r in rows
+                if 0 <= r < len(self.model.steps)
+            }
+        elif previous_rows is not None:
+            rows = previous_rows
             indices = {
                 max(0, bisect_right(self.workflow.canvas.starts, r) - 1)
                 for r in rows
@@ -46,6 +56,11 @@ class EditingMixin:
         self.select_blocks(
             [self.blocks[i] for i in sorted(indices)], open_inspector=False, preserve_table=events
         )
+        identity = self.group_inspector.identity
+        if identity is not None:
+            self.group_inspector.select(
+                identity if identity in self.model.groups else None, self.model.groups.get(identity)
+            )
         self.update_stats()
         if self.pages.currentIndex() == 0:
             self.navigate(0, 1 if self.events_btn.isChecked() else 0)
@@ -124,7 +139,7 @@ class EditingMixin:
             self._sync_selection = False
 
     def table_selection_changed(self, *args):
-        if self._sync_selection or self.busy:
+        if self._sync_selection or self.busy or self.model.resetting:
             return
         rows = sorted({i.row() for i in self.table.selectionModel().selectedRows()})
         if not rows or not self.blocks:
@@ -156,7 +171,7 @@ class EditingMixin:
             item = menu.addAction(icon(glyph), title)
             item.triggered.connect(lambda checked=False, k=kind, r=row: self.compose_action(k, r))
         menu.addSeparator()
-        menu.addAction(icon("note"), "Note / text…", lambda: self.compose_note(row))
+        menu.addAction(icon("group"), "Group selection and add notes…", self.edit_selection_notes)
         menu.exec(QCursor.pos())
 
     def compose_action(self, kind, row=None):
@@ -167,6 +182,8 @@ class EditingMixin:
     def insert_steps(self, steps, row=None, description="Paste actions", groups=None):
         if self.busy or not steps:
             return
+        if not self.group_inspector.flush():
+            return
         if len(self.model.steps) + len(steps) > MAX_STEPS:
             self.show_error("The combined workflow exceeds 200,000 events")
             return
@@ -174,13 +191,22 @@ class EditingMixin:
         at = row if row is not None else selected[-1] + 1 if selected else len(self.model.steps)
         if not 0 <= at <= len(self.model.steps):
             raise ValueError("Invalid insertion position")
-        self.selection_anchor = at
-        self.pending_rows = list(range(at, at + len(steps)))
-        self.model.commit(
-            self.model.steps[:at] + list(steps) + self.model.steps[at:],
-            description,
-            {**self.model.groups, **(groups or {})},
+        combined = (
+            Script(
+                steps=self.model.steps[:at] + list(steps) + self.model.steps[at:],
+                groups={**self.model.groups, **(groups or {})},
+            )
+            .validate()
+            .migrate_note_cards()
         )
+        if combined.notes:
+            raise ValueError(
+                "Add an input action before pasting legacy note-only content, or open its original workflow file"
+            )
+        count = len(combined.steps) - len(self.model.steps)
+        self.selection_anchor = min(at, len(combined.steps) - 1)
+        self.pending_rows = list(range(at, at + count)) if count else [self.selection_anchor]
+        self.model.commit(combined.steps, description, combined.groups)
         self.navigate(0, 1 if self.events_btn.isChecked() else 0)
         if self.active_block and not self.events_btn.isChecked():
             self.select_block(self.active_block)
@@ -275,14 +301,17 @@ class EditingMixin:
         return subset
 
     def copy_selection(self):
+        if not self.group_inspector.flush():
+            return False
         rows = self.selected_rows()
         if not rows:
             return False
         data = encode_steps([self.model.steps[r] for r in rows], self.model.groups)
-        mime = QMimeData()
-        mime.setData(CLIPBOARD_MIME, data)
-        mime.setText(data.decode())
-        QApplication.clipboard().setMimeData(mime)
+        # Let Qt construct/own its text MIME object. A Python-created QMimeData
+        # survives into Qt's static clipboard destruction on offscreen platforms,
+        # where its binding callback can run after Python has shut down (SIGSEGV).
+        # The JSON envelope identifies actions; paste still accepts older custom MIME.
+        QApplication.clipboard().setText(data.decode())
         self.status.setText(f"Copied {len(rows):,} events · Ctrl+V to paste")
         return True
 
@@ -300,6 +329,8 @@ class EditingMixin:
 
     def duplicate(self):
         if not self.busy:
+            if not self.group_inspector.flush():
+                return
             selected = [self.model.steps[r] for r in self.selected_rows()]
             steps, groups = clone_selection(selected, self.model.groups)
             self.insert_steps(steps, description="Duplicate actions", groups=groups)
@@ -359,7 +390,7 @@ class EditingMixin:
             QMessageBox.information(
                 self,
                 "Workflow shortcuts",
-                "Ctrl+C / X / V  Copy / cut / paste\nCtrl+D  Duplicate\nCtrl+A  Select the entire workflow\nDelete / Backspace  Remove selection\nCtrl+Z / Ctrl+Shift+Z  Undo / redo\nEsc  Clear selection\n\nCtrl-click  Add/remove an action\nShift-click or Shift+arrows  Select a range\nLeft-drag empty space  Box select\nAlt+arrows  Move selection\nMiddle-drag empty space  Pan\nCtrl+wheel or Ctrl+ +/−  Zoom\nCtrl+0  Fit\nCtrl+G / Ctrl+Shift+G  Group / ungroup selection\nCtrl+Shift+N  Add a note\nRight-click a tab  Rename, save or close\n\nF6  Record / finish\nF7  Run / stop\nF8  Pause / resume\nF12  Emergency stop",
+                "Ctrl+C / X / V  Copy / cut / paste\nCtrl+D  Duplicate\nCtrl+A  Select the entire workflow\nDelete / Backspace  Remove selection\nCtrl+Z / Ctrl+Shift+Z  Undo / redo\nEsc  Clear selection\n\nCtrl-click  Add/remove an action\nShift-click or Shift+arrows  Select a range\nLeft-drag empty space  Box select\nAlt+arrows  Move selection\nMiddle-drag empty space  Pan\nCtrl+wheel or Ctrl+ +/−  Zoom\nCtrl+0  Fit\nCtrl+G / Ctrl+Shift+G  Group / ungroup selection\nCtrl+Shift+N  Edit group notes\nRight-click a tab  Rename, save or close\n\nF6  Record / finish\nF7  Run / stop\nF8  Pause / resume\nF12  Emergency stop",
             )
             return
         try:
@@ -370,7 +401,8 @@ class EditingMixin:
             elif command == "clear_selection":
                 self.select_blocks([])
             elif command in ("undo", "redo"):
-                getattr(self.undo, command)()
+                if self.group_inspector.flush():
+                    getattr(self.undo, command)()
             elif command == "copy":
                 self.copy_selection()
             elif command == "cut":
@@ -382,8 +414,8 @@ class EditingMixin:
                 self.duplicate()
             elif command == "delete":
                 self.delete()
-            elif command == "note":
-                self.compose_note()
+            elif command == "group_notes":
+                self.edit_selection_notes()
             elif command == "group":
                 self.group_selection()
             elif command == "ungroup":
