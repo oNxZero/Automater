@@ -146,3 +146,28 @@ def test_reject_empty_and_concurrent_start():
 def test_bad_options(kwargs):
     with pytest.raises(ValueError):
         PlaybackOptions(**kwargs)
+
+
+def test_device_registration_wait_is_cancellable_before_first_event():
+    backend = Backend()
+    backend.startup_delay = 0.5
+    replay, backend, _ = run([Step(0, "key_down", "KEY_A")], backend)
+    assert not backend.sent.wait(0.02)
+    replay.stop()
+    assert replay.join(0.3)
+    assert backend.events == [] and backend.closed
+
+
+def test_pause_restores_modifiers_before_other_held_keys():
+    replay, backend, _ = run(
+        [Step(0, "key_down", "KEY_LEFTSHIFT"), Step(0, "key_down", "KEY_A"), Step(20_000)]
+    )
+    eventually(lambda: len(backend.events) >= 2)
+    replay.pause()
+    eventually(lambda: len(backend.events) >= 4)
+    assert [s.code for s in backend.events[2:4]] == ["KEY_A", "KEY_LEFTSHIFT"]
+    replay.pause()
+    eventually(lambda: len(backend.events) >= 6)
+    assert [s.code for s in backend.events[4:6]] == ["KEY_LEFTSHIFT", "KEY_A"]
+    replay.stop()
+    assert replay.join()

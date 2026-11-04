@@ -1,11 +1,11 @@
-# Verification of v0.2
+# Verification of v0.3
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
 Python 3.14.8, Qt/PySide6 6.12.0, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **70 automated tests passed**, including offscreen Qt workflows and four live X11
+- **101 automated tests passed**, including offscreen Qt workflows and four live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Replay tests cover long-delay cancellation, held-key release, partial-send failure,
@@ -16,6 +16,20 @@ Python 3.14.8, Qt/PySide6 6.12.0, evdev 1.9.3, and python-xlib 0.33.
   spacing, monitor-to-recorder delivery, virtual-device exclusion and SYN_DROPPED.
 - A mocked uinput device verifies exact key/button/relative-axis event translation,
   report synchronization and close behavior. It does not prove hardware acceptance.
+- Discovery tests now use the actual installed `evdev.InputDevice` class with supplied
+  metadata and real file descriptors, exercising its real capabilities/close methods,
+  slots, and lack of a context manager. This directly regresses the user-reported bug.
+- Real evdev `read()` is exercised on pipe-fed Linux input_event packets through
+  the monitor and recorder, for both realtime fallback and monotonic clock paths.
+  These are simulated kernel packets, not physical hardware or a compositor test.
+- Device tests cover permission errors, removed nodes, partial-open cleanup, virtual/
+  unrelated-device filtering, separate wheel interfaces, stable identity under node renumbering, and explicit
+  absolute-motion limitations. GUI tests apply selections, repair permissions,
+  ignore stale listeners, and verify that failed startup never claims readiness.
+- Preferences tests verify private atomic storage, validation and malformed-data
+  handling. GUI tests restore run/capture settings and append recordings with undo.
+  Engine tests verify cancellation before virtual-device registration and modifier
+  ordering during pause/resume.
 - Persistence tests cover private file permissions, atomic replacement failure,
   round trips, file-size limits, malformed fields, invalid timing/types and versions.
 - Qt tests cover editing, validation feedback, undo/redo, test replay, locked editing
@@ -32,15 +46,14 @@ Python 3.14.8, Qt/PySide6 6.12.0, evdev 1.9.3, and python-xlib 0.33.
   and background compatibility preflight.
 - `ruff check` and `ruff format --check` pass. Source distribution and wheel build
   successfully with `python -m build`. Runtime dependencies have tested constraints.
-- The actual Qt window was rendered and visually inspected at 1480×900 and 1100×740.
+- The actual Qt window was rendered and visually inspected at 1240×800 and 1000×680.
   Screenshots include [workflow](editor.png), [events](events.png), [run settings](run-settings.png),
   [guided setup](setup.png) and [welcome](welcome.png). An actual Test mode recording
   produced [the animated walkthrough](workflow-demo.gif). Record/run/pause/stop
-  remain in a fixed transport bar. Test mode is near the top of Run settings.
-- A 100,000-event mouse recording loaded in approximately 0.31 s and edited one
-  event in 0.22 s on this sandbox. It projected to one path card without deleting
-  samples. Graphics scenes are bounded to 60 cards per page. These measurements
-  are observations, not latency guarantees.
+  remain in a fixed transport bar, with Pause/Stop hidden while idle. Properties
+  are opened on demand. The previous sidebar and duplicate navigation are removed.
+- A synthetic 10,130-event recording is preserved by the workflow tests while
+  graphics scenes remain bounded to 60 cards per page.
 - `./start.sh --doctor` works and accurately reports the sandbox's missing device
   nodes instead of claiming recording/replay access.
 - GitHub Actions is configured for Python 3.11 and 3.14 on Ubuntu, using Xvfb for
@@ -68,4 +81,4 @@ manual checks remain unverified:
    validate memory usage and timing on the user's actual machine.
 
 Native Wayland background routing, gamepad/absolute input, Windows/macOS, process
-watchdogs, and packaged installers are roadmap work, not verified v0.2 features.
+watchdogs, and packaged installers are roadmap work, not verified v0.3 features.

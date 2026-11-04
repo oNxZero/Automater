@@ -7,9 +7,9 @@ already enabled. Click **Run workflow** to watch the sequence without sending in
 
 ![Workflow workspace](editor.png)
 
-The sidebar takes you to Workflow, Events, Library and Setup. Your current workflow
-name is editable in the header. Save and Save as stay at the top; Record, Run,
-Pause and Stop stay at the bottom. The indicator shows recording, running, paused
+The top navigation opens Workflow, Events, Library and Devices. Your current workflow
+name is editable in the header. Save is at the top; File contains New, Open, Save as and the example. Record and Run
+stay at the bottom. Pause and Stop appear during active work. The indicator shows recording, running, paused
 or ready, and the line below explains what is happening.
 
 ## Build and edit
@@ -18,7 +18,8 @@ Click **Add action** to choose Keyboard press, Mouse click, Wait, Move pointer, 
 Scroll. An action is inserted after your selection, or appended if none is selected.
 The plus button on a connector inserts directly at that location.
 
-Click a card to select it. **Action** on the right shows its properties:
+Properties are hidden until needed. Click a card to select it; the close button
+in the inspector gives the space back to the canvas. **Action** on the right shows its properties:
 
 - **Key / button:** Choose the physical key or mouse button. A hold edits its press
   and release together.
@@ -63,7 +64,7 @@ page automatically. The underlying event list remains complete.
 
 ## Set up playback
 
-Click **Run settings**, or select **Run** in the inspector.
+Click **Settings**, or select **Run** in the inspector.
 
 ![Run settings](run-settings.png)
 
@@ -78,6 +79,7 @@ Click **Run settings**, or select **Run** in the inspector.
 | Test mode | Highlight the real replay sequence without emitting input. |
 
 The estimate includes enabled events, speed, countdown, repetitions and loop gaps.
+Desktop replay allows at least 0.5 s for its new virtual device to register.
 It excludes time spent paused and cannot predict operating-system or game latency.
 Pause releases held inputs and resume restores them. Stop interrupts a wait and
 releases held inputs. Editing is locked during playback and recording; you can
@@ -90,21 +92,25 @@ delivery is unavailable. See the [platform matrix](../README.md#background-compa
 
 ![Guided setup](setup.png)
 
-Open Setup, check input access, select devices, and click Apply / refresh devices.
+Open Devices, check input access, select devices, and click Apply selection.
 Choose keyboard, buttons/wheel and/or movement. The permissions link explains
 missing device access. If your original Moonlight clicker works, the same access
 may already be available.
 
-Press F6. After the countdown, do your routine and press F6 again. The result
-replaces the current event sequence; Undo restores it. F12 also finishes capture
+Press F6. After the countdown, do your routine and press F6 again. By default the result
+replaces the current event sequence; Undo restores it. Enable **Append to current
+workflow** in Devices to add to existing actions instead. F12 also finishes capture
 or cancels a countdown. Control hotkeys never enter the recording. Capture in
 progress stays in memory until stopped; stopping hands it to the editor and autosave.
-After reconnecting a device, refresh the device list.
+After reconnecting a device, refresh the device list. Selection is remembered using
+the device metadata, so changes to event-node numbers do not select an unrelated
+input. Recommended resets the selection to discovered keyboards and mice. If
+only a mouse is selected, global keyboard shortcuts will not work.
 
 ## Save and recover
 
-**Save workflow** saves to the current file, or asks for a destination on first
-save. The default is your library. **Save as** writes a separate copy. Library
+**Save** saves to the current file, or asks for a destination on first
+save. The default is your library. **File → Save as** writes a separate copy. Library
 search filters by filename; double-click a result to open it. Import opens an
 existing JSON script. Existing v0.1 files use the same version-1 data schema.
 
@@ -117,14 +123,14 @@ unsaved work. See [storage and privacy](../README.md#files-and-privacy).
 ## Common questions
 
 **Why does recording say setup is needed?** Studio needs access to physical devices.
-Use Setup → Permissions & help. Test mode and editing work without those permissions.
+Use Devices → Input access help. Test mode and editing work without those permissions.
 
 **Why does a key appear as a press and a release instead of one card?** Other events
 occur between them, or their enabled states differ. Keeping them separate preserves
 the original order and simultaneous holds.
 
 **Can I add branches or nested loops?** This release visualizes a linear macro.
-Repeat the complete sequence in Run settings. Conditional branches and nested loops
+Repeat the complete sequence in Settings → Run. Conditional branches and nested loops
 are planned separately; drawing a connection does not create unsupported logic.
 
 **Why did my mouse path land elsewhere?** Movement is relative, so starting position,
@@ -134,3 +140,11 @@ in Notes. This release does not record absolute screen positions.
 **Will a game accept background input?** Test it on that game. Desktop uinput and
 directed X11 window messages have different compatibility. The test receiver proves
 message delivery, not acceptance by any particular game.
+
+## Remembered settings
+
+Run speed, repeats, start delay, loop gap, capture filters, append mode and Test
+mode are remembered across restarts. They are app preferences, separate from the
+portable macro file. Background window handles are intentionally not restored;
+choose a live window each time. Corrupt preferences fall back to defaults with
+a short message; Technical details contains the underlying error.

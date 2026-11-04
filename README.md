@@ -10,7 +10,7 @@ Record your keyboard and mouse. Shape the sequence visually. Run it your way.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Studio-v0.2-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Studio-v0.3-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 
 A native Python desktop app inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
@@ -34,6 +34,21 @@ Your original input samples and timings stay available in the **Events** view.
 | Connected keyboard, mouse, wait and path cards | Speed, repeats, start delay and loop gap | JSON import and export |
 | Click a card to edit its properties | Pause, resume and F12 emergency stop | Atomic saves and autosave recovery |
 | Insert between cards; duplicate or reorder | Watch the active action during replay | Undo / redo up to 50 event edits |
+
+## New in v0.3
+
+- **A quieter workspace:** one navigation row, no sidebar or duplicate tabs, properties
+  open on demand, and Pause/Stop only appear during active work.
+- **Linux device discovery fixed:** actual evdev objects are opened and closed correctly.
+  Keyboard/mouse identification filters unrelated power and gamepad interfaces.
+- **Remembered device choices:** selections survive event-node renumbering when the
+  device provides a stable physical/unique identifier. Recommended restores defaults.
+- **Remembered run and capture settings:** speed, repeats, countdown, gap and filters
+  persist locally across restarts.
+- **Append recording:** optionally add a recording to the existing workflow. Undo
+  restores the previous sequence. Replacement remains the default.
+- **Clearer diagnostics:** permissions, unsupported absolute movement and disconnects
+  are explained in Devices; raw diagnostics stay behind Technical details.
 
 ## See it in motion
 
@@ -69,7 +84,7 @@ Want to explore first? No input permissions are needed for the demo:
 ./start.sh --demo
 ```
 
-It opens the example with **Test mode** enabled. Press **Run workflow** and watch
+It opens the example with **Test mode** enabled. Press **Run** and watch
 it progress through the cards. To print input/session diagnostics instead:
 
 ```bash
@@ -97,16 +112,16 @@ physical input access separately.
 
 ## Your first workflow
 
-1. **Connect.** Open **Setup**, select your keyboard and mouse, and click
-   **Apply / refresh devices**. Choose whether to capture keyboard, buttons/wheel,
+1. **Connect.** Open **Devices**, select your keyboard and mouse, and click
+   **Apply selection**. Choose whether to capture keyboard, buttons/wheel,
    and mouse movement.
 2. **Record.** Press **F6**, switch to your game during the countdown, and perform
-   the routine. Press **F6** again to finish. Undo can restore the previous routine.
+   the routine. Press **F6** again to finish. Undo can restore the previous routine. Enable **Append to current workflow** in Devices to keep existing actions.
 3. **Make it yours.** Click a workflow card. Change its key, delay, hold duration,
    or enabled state in **Action**, then click **Apply changes**. Use **Events** for
    individual press/release events and mouse samples.
-4. **Preview.** Open **Run settings → Run**, enable **Test mode**, and click
-   **Run workflow**. The active action and progress are highlighted without sending input.
+4. **Preview.** Open **Settings → Run**, enable **Test mode**, and click
+   **Run**. The active action and progress are highlighted without sending input.
 5. **Run.** Turn Test mode off, choose the destination, speed and repetitions, then
    press **F7**. Keep **F12** handy to stop. Save your workflow for next time.
 
@@ -117,7 +132,7 @@ physical input access separately.
 | **Workflow** | Follow your routine from Start to Finish. Select cards, insert at a connector, drag to reorder, zoom and pan. |
 | **Events** | Inspect every original input. Double-click cells to edit precise delays, actions, keys and relative coordinates. |
 | **Library** | Search saved workflows, double-click to open, or import a JSON script. |
-| **Setup** | Check input access, select physical devices, choose capture categories and find permissions help. |
+| **Devices** | Check input access, select physical devices, choose capture categories and find permissions help. |
 | **Action inspector** | Edit the selected action, apply changes, duplicate, delete or move it. |
 | **Run inspector** | Choose destination, speed, repeats, countdown, loop gap and Test mode. See estimated duration. |
 | **Notes inspector** | Remember game bindings, starting position and camera direction. |
@@ -132,7 +147,7 @@ or next action; **Alt + ←/→** reorders it. **Delete** removes the selected c
 one hold/click card. Consecutive movement or scroll samples share a card, while
 Events retains every sample. Overlapping key holds stay separate. Large workflows
 use pages of at most 60 cards, keeping the canvas responsive. This is a linear
-sequence; repeat the whole workflow in Run settings. Branches and nested loops
+sequence; repeat the whole workflow in Settings → Run. Branches and nested loops
 remain on the roadmap.
 
 Read the [illustrated user guide](docs/USER_GUIDE.md) for timing, grouped-path editing,
@@ -230,6 +245,10 @@ they are not screen-coordinate recordings. Scripts have a 200,000-step limit.
 
 ## Files and privacy
 
+Device selections and run/capture preferences are saved privately in `preferences.json`.
+Window handles are never restored across restarts. These preferences are per application;
+portable macro JSON files retain their version-1 format.
+
 Configuration lives in `$XDG_CONFIG_HOME/moonlight-studio` (normally
 `~/.config/moonlight-studio`). Saved library scripts are under `scripts/`;
 unfinished edits are autosaved to `recovery.json` every five seconds while idle.
@@ -242,6 +261,10 @@ Macro files contain versioned JSON data, never executable Python. They contain
 your recorded input, so keep them private. No telemetry, network calls, or cloud
 uploads are implemented. Files are written with private permissions and atomically
 replaced. Imports are limited to 32 MiB and strictly validated before replay.
+
+Desktop replay waits at least 0.5 s after creating a virtual device so the desktop
+has time to register it; this wait can be cancelled. Actual registration timing
+still depends on the compositor.
 
 The replay worker is separate from Qt's event loop. Stop and cleanup run on normal
 completion, cancellation, errors, pause, and application close. Force-killing the

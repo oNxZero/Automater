@@ -1,3 +1,4 @@
+import json
 import time
 from bisect import bisect_right
 from dataclasses import replace
@@ -21,15 +22,16 @@ from .designer import build_ui
 from .editor import StepModel
 from .engine import DryRun, PlaybackOptions, Replay
 from .linux_input import DeviceMonitor, Recorder, UInputBackend, devices, diagnostics
-from .models import Script, Step
+from .models import KEY_CODES, MAX_STEPS, Script, Step
+from .preferences import Preferences
 from .theme import STYLE, icon
 from .workflow import blocks_for
 
 
 class Bridge(QObject):
     replay = Signal(str, object)
-    hotkey = Signal(str)
-    monitor_error = Signal(str)
+    hotkey = Signal(int, str)
+    monitor_error = Signal(int, str)
 
 
 def sample():
@@ -52,18 +54,27 @@ class MainWindow(QMainWindow):
         self.config_dir = Path(config_dir) if config_dir else storage.data_dir()
         self.library_dir = self.config_dir / "scripts"
         self.recovery_path = self.config_dir / "recovery.json"
+        self.preferences_path = self.config_dir / "preferences.json"
+        self.initializing = True
+        self.preferences_error = ""
+        try:
+            self.preferences = Preferences.load(self.preferences_path)
+        except (OSError, ValueError) as exc:
+            self.preferences = Preferences()
+            self.preferences_error = str(exc)
         self.path = None
         self.saved_snapshot = Script().to_dict()
         self.loading = False
         self.busy = False
         self.record_pending = False
         self.monitor = None
+        self.monitor_generation = 0
         self.monitor_ok = False
         self.recorder = Recorder()
         self.bridge = Bridge()
         self.bridge.replay.connect(self.on_replay)
-        self.bridge.hotkey.connect(self.on_hotkey)
-        self.bridge.monitor_error.connect(self.on_monitor_error)
+        self.bridge.hotkey.connect(self.route_hotkey)
+        self.bridge.monitor_error.connect(self.route_monitor_error)
         self.undo = QUndoStack(self)
         self.undo.setUndoLimit(50)
         self.model = StepModel(self.undo)
@@ -74,10 +85,11 @@ class MainWindow(QMainWindow):
         self.blocks = []
         self.setWindowIcon(icon("moon", "#b5a4fa"))
         self.setWindowTitle("Moonlight Studio")
-        self.resize(1480, 900)
-        self.setMinimumSize(1100, 740)
+        self.resize(1240, 800)
+        self.setMinimumSize(1000, 680)
         self.setStyleSheet(STYLE)
         self.build_ui()
+        self.restore_preferences()
         self.model.changed.connect(self.edited)
         self.model.changed.connect(self.refresh_workflow)
         self.name.textChanged.connect(self.edited)
@@ -100,6 +112,10 @@ class MainWindow(QMainWindow):
         self.refresh_library()
         self.refresh_devices()
         self.refresh_windows()
+        self.initializing = False
+        if self.preferences_error:
+            self.show_error("Settings could not be loaded; using defaults.")
+            self.device_details.append(self.preferences_error)
         if not demo:
             QTimer.singleShot(0, self.offer_recovery)
 
@@ -110,6 +126,64 @@ class MainWindow(QMainWindow):
     def update_undo_actions(self, _enabled=False):
         self.undo_btn.setEnabled(not self.busy and self.undo.canUndo())
         self.redo_btn.setEnabled(not self.busy and self.undo.canRedo())
+
+    @Slot(int, str)
+    def route_hotkey(self, generation, action):
+        if generation == self.monitor_generation:
+            self.on_hotkey(action)
+
+    @Slot(int, str)
+    def route_monitor_error(self, generation, message):
+        if generation == self.monitor_generation:
+            self.on_monitor_error(message)
+
+    def restore_preferences(self):
+        prefs = self.preferences
+        for widget, value in (
+            (self.speed, prefs.speed),
+            (self.repeats, prefs.repeats),
+            (self.countdown, prefs.countdown),
+            (self.gap, prefs.loop_gap),
+        ):
+            widget.setValue(value)
+            widget.valueChanged.connect(self.save_preferences)
+        for widget, value in (
+            (self.capture_keys, prefs.capture_keys),
+            (self.capture_buttons, prefs.capture_buttons),
+            (self.capture_motion, prefs.capture_motion),
+            (self.append_recording, prefs.append_recording),
+            (self.test_mode, prefs.test_mode),
+        ):
+            widget.setChecked(value)
+            widget.toggled.connect(self.save_preferences)
+        self.update_run_summary()
+
+    def save_preferences(self, *args):
+        if self.initializing:
+            return
+        prefs = self.preferences
+        prefs.speed, prefs.repeats = self.speed.value(), self.repeats.value()
+        prefs.countdown, prefs.loop_gap = self.countdown.value(), self.gap.value()
+        prefs.capture_keys, prefs.capture_buttons = (
+            self.capture_keys.isChecked(),
+            self.capture_buttons.isChecked(),
+        )
+        prefs.capture_motion = self.capture_motion.isChecked()
+        prefs.append_recording, prefs.test_mode = (
+            self.append_recording.isChecked(),
+            self.test_mode.isChecked(),
+        )
+        self.update_run_summary()
+        try:
+            prefs.save(self.preferences_path)
+        except (OSError, ValueError) as exc:
+            self.status.setText("Could not save settings.")
+            self.device_details.append(str(exc))
+
+    def recommend_devices(self):
+        self.preferences.device_ids = None
+        self.device_list.clear()
+        self.refresh_devices()
 
     def add_shortcuts(self):
         for key, callback in (
@@ -145,23 +219,23 @@ class MainWindow(QMainWindow):
         self.update_stats()
         title = self.name.text().strip() or "Untitled script"
         self.setWindowTitle(f"{'● ' if self.dirty() else ''}{title} — Moonlight Studio")
-        self.saved_badge.setText(
-            "Unsaved changes" if self.dirty() else "Saved" if self.path else "Local workflow"
-        )
+        self.saved_badge.setText("Unsaved" if self.dirty() else "")
         self.update_run_summary()
 
     def update_stats(self):
         duration = sum(s.delay_ms for s in self.model.steps if s.enabled) / 1000
         self.stats.setText(
-            f"{len(self.blocks):,} actions   ·   {len(self.model.steps):,} original events   ·   {duration:.2f} s at 1×"
+            f"{len(self.blocks):,} actions · {duration:.2f} s" if self.model.steps else ""
         )
 
     def navigate(self, page, view=0):
         if self.busy and page != 0:
             return
         self.pages.setCurrentIndex(page)
+        self.workspace_header.setVisible(page == 0)
         if page == 0:
-            self.inspector_panel.setVisible(bool(self.model.steps) or view == 1)
+            if not self.model.steps and view == 0:
+                self.inspector_panel.hide()
             self.editor_stack.setCurrentIndex(2 if not self.model.steps and view == 0 else view)
             self.flow_btn.setChecked(view == 0)
             self.events_btn.setChecked(view == 1)
@@ -174,6 +248,9 @@ class MainWindow(QMainWindow):
         self.inspector_stack.setCurrentIndex(index)
         self.inspector_buttons[index].setChecked(True)
 
+    def hide_inspector(self):
+        self.inspector_panel.hide()
+
     def update_run_summary(self):
         if not hasattr(self, "transport_hint"):
             return
@@ -184,12 +261,22 @@ class MainWindow(QMainWindow):
             if self.mode.currentIndex()
             else "Active desktop"
         )
+        self.record_btn.setToolTip(
+            "Append a recording to the current actions · F6"
+            if self.append_recording.isChecked()
+            else "Replace actions with a recording; Undo restores them · F6"
+        )
         cycle = sum(s.delay_ms for s in self.model.steps if s.enabled) / self.speed.value() / 1000
         count = self.repeats.value()
         estimate = f"{cycle:.2f} s per cycle"
         if count:
             total = (
-                self.countdown.value()
+                max(
+                    self.countdown.value(),
+                    UInputBackend.startup_delay
+                    if not self.test_mode.isChecked() and self.mode.currentIndex() == 0
+                    else 0,
+                )
                 + cycle * count
                 + max(0.01, self.gap.value()) * max(0, count - 1)
             )
@@ -220,14 +307,14 @@ class MainWindow(QMainWindow):
         self.update_stats()
         if self.blocks and row >= 0:
             index = max(0, bisect_right(self.workflow.canvas.starts, row) - 1)
-            self.select_block(self.blocks[index])
+            self.select_block(self.blocks[index], open_inspector=False)
         else:
             self.active_block = None
             self.action_inspector.select(None, self.model.steps)
         if self.pages.currentIndex() == 0:
             self.navigate(0, 1 if self.events_btn.isChecked() else 0)
 
-    def select_block(self, block):
+    def select_block(self, block, open_inspector=True):
         if self._sync_selection or self.busy:
             return
         self.active_block = block
@@ -243,7 +330,8 @@ class MainWindow(QMainWindow):
                 selected, QItemSelectionModel.Select | QItemSelectionModel.Rows
             )
             self.workflow.canvas.select_row(block.start, reveal=False)
-            self.show_inspector(0)
+            if open_inspector:
+                self.show_inspector(0)
         else:
             self.selection_anchor = -1
         self._sync_selection = False
@@ -365,6 +453,7 @@ class MainWindow(QMainWindow):
         self.loading = False
         self.edited()
         self.navigate(0, 0)
+        self.inspector_panel.hide()
         QTimer.singleShot(0, self.workflow.canvas.fit)
 
     def confirm_discard(self):
@@ -513,6 +602,8 @@ class MainWindow(QMainWindow):
         )
         self.workflow.canvas.select_row(at)
         self.navigate(0, 1 if self.events_btn.isChecked() else 0)
+        if self.active_block:
+            self.select_block(self.active_block)
 
     def duplicate(self):
         rows = self.selected_rows()
@@ -569,17 +660,24 @@ class MainWindow(QMainWindow):
             self.capture_keys,
             self.capture_buttons,
             self.capture_motion,
+            self.append_recording,
+            self.apply_devices_btn,
         ):
             widget.setEnabled(not busy)
         self.play_btn.setEnabled(not self.recorder.active and not self.record_pending)
         self.record_btn.setEnabled(not busy or self.recorder.active or self.record_pending)
         self.pause_btn.setEnabled(bool(getattr(self, "replay", None) and self.replay.running))
         self.stop_btn.setEnabled(busy)
+        self.pause_btn.setVisible(
+            busy and bool(getattr(self, "replay", None) and self.replay.running)
+        )
+        self.stop_btn.setVisible(busy)
+        self.run_state.setVisible(busy)
+        self.progress.setVisible(busy)
         for nav in self.nav_buttons[2:]:
             nav.setEnabled(not busy)
         self.undo_btn.setEnabled(not busy and self.undo.canUndo())
         self.redo_btn.setEnabled(not busy and self.undo.canRedo())
-        self.empty_record.setEnabled(not busy)
         if not busy:
             self.run_state.setText("●  READY")
         self.update_run_summary()
@@ -614,62 +712,130 @@ class MainWindow(QMainWindow):
         if self.busy:
             return
         previous = {
-            self.device_list.item(i).data(Qt.UserRole): self.device_list.item(i).checkState()
+            self.device_list.item(i).data(Qt.UserRole + 1): self.device_list.item(i).checkState()
             for i in range(self.device_list.count())
+            if self.device_list.item(i).flags() & Qt.ItemIsEnabled
         }
-        if self.monitor:
-            self.monitor.stop()
+        self.monitor_generation += 1
+        generation = self.monitor_generation
         self.monitor_ok = False
-        self.device_list.clear()
+        self.device_badge.setText("Devices")
         try:
-            found = devices()
-            for device in found:
-                item = QListWidgetItem(device.name)
-                item.setData(Qt.UserRole, device.path)
-                item.setToolTip(device.path)
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(
-                    previous.get(device.path, Qt.Checked) if device.readable else Qt.Unchecked
+            if self.monitor and not self.monitor.stop():
+                raise RuntimeError(
+                    "The previous input listener is still stopping. Try refresh again."
                 )
+            self.monitor = None
+            found = devices()
+            self.device_list.clear()
+            selected_ids = self.preferences.device_ids
+            for device in found:
+                kind = (
+                    "Keyboard + mouse"
+                    if device.keyboard and device.mouse
+                    else "Keyboard"
+                    if device.keyboard
+                    else "Mouse"
+                    if device.mouse
+                    else "Input device"
+                )
+                text = (
+                    f"{device.name}\n{kind}"
+                    if device.readable
+                    else f"{device.name}\n{device.issue or 'Permission needed'}"
+                )
+                if device.readable and device.issue:
+                    text += " · " + device.issue
+                item = QListWidgetItem(text)
+                identity = device.identifier or "path:" + device.path
+                item.setData(Qt.UserRole, device.path)
+                item.setData(Qt.UserRole + 1, identity)
+                item.setData(Qt.UserRole + 2, device.keyboard)
+                item.setToolTip(device.path + (" · " + device.issue if device.issue else ""))
+                item.setIcon(icon("key" if device.keyboard else "mouse"))
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                checked = previous.get(
+                    identity,
+                    Qt.Checked
+                    if selected_ids is None or identity in selected_ids
+                    else Qt.Unchecked,
+                )
+                item.setCheckState(checked if device.readable else Qt.Unchecked)
                 if not device.readable:
                     item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
                 self.device_list.addItem(item)
-            paths = [
-                self.device_list.item(i).data(Qt.UserRole)
+            selected = [
+                self.device_list.item(i)
                 for i in range(self.device_list.count())
                 if self.device_list.item(i).checkState() == Qt.Checked
             ]
-            info = diagnostics()
+            paths = [item.data(Qt.UserRole) for item in selected]
+            if not self.initializing and any(d.readable for d in found):
+                present = {d.identifier or "path:" + d.path for d in found if d.readable}
+                missing = set(self.preferences.device_ids or []) - present
+                self.preferences.device_ids = sorted(
+                    missing | {i.data(Qt.UserRole + 1) for i in selected}
+                )
+                self.save_preferences()
+            info = diagnostics(found)
+            self.device_details.setPlainText(json.dumps(info, indent=2))
+            output = (
+                "Desktop replay ready"
+                if info["uinput_writable"]
+                else "Desktop replay needs input access"
+            )
             self.health.setText(
-                f"Session: {info['session']}\nReadable devices: {info['readable_devices']}\n"
-                f"uinput: {'ready' if info['uinput_writable'] else 'permission / module needed'}"
+                f"{len(paths)} selected · {info['readable_devices']} available\n{output}"
             )
             if paths:
                 self.monitor = DeviceMonitor(
-                    paths, self.recorder, self.bridge.hotkey.emit, self.bridge.monitor_error.emit
+                    paths,
+                    self.recorder,
+                    partial(self.bridge.hotkey.emit, generation),
+                    partial(self.bridge.monitor_error.emit, generation),
                 )
+                self.monitor.start()  # Returns only after physical devices are open.
                 self.monitor_ok = True
-                self.monitor.start()
+                keyboard = any(i.data(Qt.UserRole + 2) for i in selected)
                 self.notice.setText(
-                    "Input monitor ready. Record a routine or build your own workflow."
+                    "Input devices connected. Your selection is ready."
+                    if keyboard
+                    else "Mouse connected. Select a keyboard too if you want global shortcuts."
                 )
-                self.device_badge.setText("Input monitor ready")
-                self.setup_link.setVisible(False)
+                self.device_badge.setToolTip(self.notice.text())
             else:
                 self.notice.setText(
-                    "Try your workflow in Test mode. Set up input access when you're ready to record."
+                    "Choose a keyboard and mouse, then apply your selection."
+                    if info["readable_devices"]
+                    else "No readable input devices. Open Input access help below. Editing and Test mode are available."
                 )
-                self.device_badge.setText("Input setup needed")
-                self.setup_link.setVisible(True)
+                self.device_badge.setText("Devices •")
+                self.device_badge.setToolTip("Input setup needed")
         except Exception as exc:
-            self.notice.setText(f"Input setup unavailable: {exc}")
+            self.notice.setText(
+                "Could not connect input devices. Refresh, or open Input access help below."
+            )
+            self.device_badge.setText("Devices •")
+            self.device_details.append(str(exc))
+            self.status.setText("Input setup needs attention. Open Devices.")
 
     def on_monitor_error(self, text):
         self.monitor_ok = False
+        if getattr(self, "replay", None) and self.replay.running:
+            self.playback_error = True
         if self.busy:
             self.stop()
+        self.notice.setText(
+            "An input device disconnected or stopped responding. Refresh the device list to reconnect."
+        )
+        self.device_badge.setText("Devices •")
+        self.device_details.append(text)
         self.show_error(
-            f"Input monitor stopped: {text} • Reconnect devices, then Apply / refresh in Setup."
+            "Recording limit reached. Start a new workflow to continue."
+            if text.startswith("Recording limit")
+            else "Input events were dropped. Recording stopped; refresh Devices and try again."
+            if "events were dropped" in text
+            else "Input monitoring stopped. Open Devices and refresh to reconnect."
         )
 
     def on_hotkey(self, action):
@@ -700,10 +866,14 @@ class MainWindow(QMainWindow):
             self.navigate(2)
             self.show_error("No selected readable input devices. Open Permissions & help in Setup.")
             return
+        self.record_base = list(self.model.steps) if self.append_recording.isChecked() else []
+        if len(self.record_base) >= MAX_STEPS - len(KEY_CODES) - 1:
+            self.show_error("Not enough space to append a recording. Start a new workflow.")
+            return
         self.record_pending = True
         self.navigate(0, 0)
         self.record_deadline = time.monotonic() + self.countdown.value()
-        self.record_btn.setText("Finish recording  ·  F6")
+        self.record_btn.setText("Finish")
         self.update_busy(True)
         self.record_timer.start()
         self.record_tick()
@@ -722,6 +892,7 @@ class MainWindow(QMainWindow):
             self.capture_keys.isChecked(),
             self.capture_buttons.isChecked(),
             self.capture_motion.isChecked(),
+            limit=MAX_STEPS - len(self.record_base),
         )
         self.record_started = time.monotonic()
         self.update_busy(True)
@@ -772,7 +943,7 @@ class MainWindow(QMainWindow):
                     self.gap.value(),
                 ),
             )
-            self.play_btn.setText("Stop run  ·  F7")
+            self.play_btn.setText("Stop")
             self.play_btn.setIcon(icon("stop", "#211b30"))
             self.progress.setValue(0)
             self.update_busy(True)
@@ -791,11 +962,15 @@ class MainWindow(QMainWindow):
         if self.recorder.active:
             steps = self.recorder.stop()
             self.selection_anchor = 0 if steps else -1
-            self.model.commit(steps, "Replace with recording")
+            prefix = getattr(self, "record_base", [])
+            self.selection_anchor = len(prefix) if steps else -1
+            self.model.commit(
+                prefix + steps, "Append recording" if prefix else "Replace with recording"
+            )
             self.status.setText(
                 f"Recording finished • {len(steps):,} steps • Undo restores previous steps"
             )
-        self.record_btn.setText("●  Record  ·  F6")
+        self.record_btn.setText("Record")
         if getattr(self, "replay", None) and self.replay.running:
             self.playback_stopped = True
             self.replay.stop()
@@ -834,7 +1009,7 @@ class MainWindow(QMainWindow):
             self.model.highlight(-1)
             self.workflow.canvas.highlight(-1)
             self.run_state.setText("●  READY")
-            self.play_btn.setText("Run workflow  ·  F7")
+            self.play_btn.setText("Run")
             self.play_btn.setIcon(icon("play", "#211b30"))
             self.update_busy(False)
             if not self.playback_error:
@@ -880,6 +1055,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         if self.monitor:
+            self.monitor_generation += 1
             self.monitor.stop()
         try:
             self.recovery_path.unlink(missing_ok=True)

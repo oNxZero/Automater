@@ -183,7 +183,10 @@ class Node(QGraphicsObject):
 
     def mousePressEvent(self, event):
         self.origin = event.scenePos()
+        already_selected = self.isSelected()
         super().mousePressEvent(event)
+        if already_selected:
+            self.canvas.selected.emit(self.block)
 
     def mouseMoveEvent(self, event):
         delta = event.scenePos().x() - self.origin.x()

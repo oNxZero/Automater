@@ -6,6 +6,17 @@ from dataclasses import dataclass
 
 from .models import Script, Step, number
 
+MODIFIER_KEYS = {
+    "KEY_LEFTSHIFT",
+    "KEY_RIGHTSHIFT",
+    "KEY_LEFTCTRL",
+    "KEY_RIGHTCTRL",
+    "KEY_LEFTALT",
+    "KEY_RIGHTALT",
+    "KEY_LEFTMETA",
+    "KEY_RIGHTMETA",
+}
+
 
 @dataclass(frozen=True)
 class PlaybackOptions:
@@ -74,7 +85,7 @@ class Replay:
                     if self._stop:
                         return None
                     backend.check()
-                    for code in sorted(held):
+                    for code in sorted(held, key=lambda code: (code not in MODIFIER_KEYS, code)):
                         backend.send(Step(0, "key_down", code))
                     self.notify("state", "Playing")
                 remaining = deadline - time.monotonic()
@@ -87,7 +98,7 @@ class Replay:
     @staticmethod
     def _release(backend, held):
         failures = []
-        for code in sorted(held):
+        for code in sorted(held, key=lambda code: (code in MODIFIER_KEYS, code)):
             try:
                 backend.send(Step(0, "key_up", code))
             except Exception as exc:
@@ -101,9 +112,10 @@ class Replay:
             backend = self.backend_factory()
             if hasattr(backend, "prepare"):
                 backend.prepare(script.steps)
-            self.notify("state", f"Starting in {options.countdown:g}s…")
+            lead_in = max(options.countdown, getattr(backend, "startup_delay", 0))
+            self.notify("state", f"Starting in {lead_in:g}s…")
             # Targets need only be focused when the countdown finishes.
-            deadline = self._wait(time.monotonic() + options.countdown, _NoCheck(), held)
+            deadline = self._wait(time.monotonic() + lead_in, _NoCheck(), held)
             if deadline is None:
                 return
             backend.check()

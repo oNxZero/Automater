@@ -28,8 +28,13 @@ def load(path):
 
 def save(script, path):
     """Replace atomically; never truncate a good script if writing fails."""
+    write_json(script.to_dict(), path)
+
+
+def write_json(data, path):
+    """Write a private JSON file atomically, also used for preferences."""
     path = Path(path)
-    content = json.dumps(script.to_dict(), indent=2, allow_nan=False) + "\n"
+    content = json.dumps(data, indent=2, allow_nan=False) + "\n"
     if len(content.encode("utf-8")) > MAX_BYTES:
         raise ValueError("Script exceeds the 32 MiB file limit")
     path.parent.mkdir(parents=True, exist_ok=True)

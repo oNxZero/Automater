@@ -1,7 +1,10 @@
 """Linux physical device monitoring and uinput output. Never grabs devices."""
 
+import errno
+import fcntl
 import os
 import select
+import struct
 import threading
 import time
 from dataclasses import dataclass
@@ -26,29 +29,77 @@ class DeviceInfo:
     path: str
     name: str
     readable: bool
+    identifier: str = ""
+    keyboard: bool = False
+    mouse: bool = False
+    issue: str = ""
+
+
+def device_identifier(device):
+    info = getattr(device, "info", None)
+    hardware = (
+        f"{getattr(info, 'bustype', 0)}:{getattr(info, 'vendor', 0)}:{getattr(info, 'product', 0)}"
+    )
+    location = getattr(device, "uniq", "") or getattr(device, "phys", "") or device.path
+    return f"{hardware}:{device.name}:{location}"
+
+
+def inaccessible_device(path, issue):
+    try:
+        name = (Path("/sys/class/input") / Path(path).name / "device/name").read_text().strip()
+    except OSError:
+        name = Path(path).name
+    return DeviceInfo(path, name, False, issue=issue)
+
+
+def event_paths():
+    # list_devices() hides inaccessible devices, so glob as well for diagnostics.
+    return sorted(set(list_devices()) | {str(p) for p in Path("/dev/input").glob("event*")})
 
 
 def devices():
     result = []
-    # list_devices() hides inaccessible devices, so glob as well for diagnostics.
-    paths = set(list_devices()) | {str(p) for p in Path("/dev/input").glob("event*")}
-    for path in sorted(paths):
+    for path in event_paths():
+        device = None
         try:
-            with InputDevice(path) as device:
-                if device.name.startswith(("Moonlight Studio", "Moonlight HID")):
-                    continue
-                caps = device.capabilities()
-                keys = set(caps.get(ecodes.EV_KEY, []))
-                if not keys.intersection(KEY_CODES.values()) and ecodes.EV_REL not in caps:
-                    continue
-                result.append(DeviceInfo(path, device.name, True))
-        except OSError:
-            result.append(DeviceInfo(path, Path(path).name + " (permission required)", False))
+            device = InputDevice(path)
+            if device.name.startswith(("Moonlight Studio", "Moonlight HID")):
+                continue
+            caps = device.capabilities()
+            keys = set(caps.get(ecodes.EV_KEY, []))
+            keyboard = bool(keys.intersection((ecodes.KEY_A, ecodes.KEY_SPACE, ecodes.KEY_ENTER)))
+            relative = set(caps.get(ecodes.EV_REL, []))
+            mouse = bool(
+                keys.intersection(KEY_CODES[b] for b in KEY_CODES if b.startswith("BTN_"))
+                or relative.intersection(
+                    (ecodes.REL_X, ecodes.REL_Y, ecodes.REL_WHEEL, ecodes.REL_HWHEEL)
+                )
+            )
+            if not keyboard and not mouse:
+                continue
+            issue = (
+                "Buttons/wheel only; pointer movement is not supported"
+                if mouse and not {ecodes.REL_X, ecodes.REL_Y}.intersection(relative)
+                else ""
+            )
+            result.append(
+                DeviceInfo(
+                    path, device.name, True, device_identifier(device), keyboard, mouse, issue
+                )
+            )
+        except PermissionError:
+            result.append(inaccessible_device(path, "Permission needed"))
+        except OSError as exc:
+            if exc.errno not in (errno.ENOENT, errno.ENODEV):
+                result.append(inaccessible_device(path, str(exc)))
+        finally:
+            if device is not None:
+                device.close()
     return result
 
 
-def diagnostics():
-    found = devices()
+def diagnostics(found=None):
+    found = devices() if found is None else found
     return {
         "session": os.environ.get("XDG_SESSION_TYPE", "unknown"),
         "uinput_exists": Path("/dev/uinput").exists(),
@@ -67,8 +118,11 @@ class Recorder:
         self.held = set()
         self.keyboard = self.mouse = self.motion = True
 
-    def start(self, keyboard=True, mouse=True, motion=True):
+    def start(self, keyboard=True, mouse=True, motion=True, limit=MAX_STEPS):
         with self._lock:
+            if type(limit) is not int or not len(KEY_CODES) + 1 < limit <= MAX_STEPS:
+                raise ValueError("Not enough space for a recording; start a new workflow.")
+            self._limit = limit
             self.steps, self.held = [], set()
             self._sources = set()
             self.keyboard, self.mouse, self.motion = keyboard, mouse, motion
@@ -125,7 +179,7 @@ class Recorder:
                     )
             if step:
                 # Keep room for final releases and a trailing wait.
-                if len(self.steps) >= MAX_STEPS - len(KEY_CODES) - 1:
+                if len(self.steps) >= self._limit - len(KEY_CODES) - 1:
                     raise RuntimeError("Recording limit reached; recording has been stopped")
                 self.steps.append(step)
                 self._last = now
@@ -151,18 +205,33 @@ class DeviceMonitor:
         self.hotkey, self.error = hotkey, error
         self._stop = threading.Event()
         self._thread = None
+        self._monotonic_fds = set()
+        self._realtime_offset = time.monotonic() - time.time()
 
     def start(self):
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
+        if self._thread and self._thread.is_alive():
+            raise RuntimeError("Input monitor is already running")
+        self._stop.clear()
+        opened = self._open()
+        self._thread = threading.Thread(target=self._run, args=(opened,), daemon=True)
+        try:
+            self._thread.start()
+        except Exception:
+            for device in opened:
+                device.close()
+            self._thread = None
+            raise
 
     def stop(self):
         self._stop.set()
         if self._thread:
             self._thread.join(1)
+        return self._thread is None or not self._thread.is_alive()
 
-    def _run(self):
+    def _open(self):
         opened = []
+        self._monotonic_fds.clear()
+        self._realtime_offset = time.monotonic() - time.time()
         try:
             for path in self.paths:
                 device = InputDevice(path)
@@ -170,14 +239,42 @@ class DeviceMonitor:
                     device.close()
                     continue
                 opened.append(device)
+                # EVIOCSCLOCKID = _IOW('E', 0xa0, int), Linux input.h.
+                try:
+                    fcntl.ioctl(device.fd, 0x400445A0, struct.pack("i", time.CLOCK_MONOTONIC))
+                    self._monotonic_fds.add(device.fd)
+                except (OSError, AttributeError):
+                    pass
             if not opened:
                 raise RuntimeError(
                     "No readable keyboard/mouse devices. Open Setup for permissions."
                 )
+            return opened
+        except Exception:
+            for device in opened:
+                device.close()
+            raise
+
+    def _run(self, opened=None):
+        opened = opened or []
+        try:
+            if not opened:
+                opened = self._open()
             while not self._stop.is_set():
-                ready, _, _ = select.select(opened, [], [], 0.1)
+                try:
+                    ready, _, _ = select.select(opened, [], [], 0.1)
+                except InterruptedError:
+                    continue
                 for device in ready:
-                    for event in device.read():
+                    try:
+                        batch = list(device.read())
+                    except BlockingIOError:
+                        continue
+                    if not batch:
+                        raise RuntimeError(
+                            "Input device closed. Refresh the device list to reconnect."
+                        )
+                    for event in batch:
                         if self._stop.is_set():
                             return
                         if event.type == ecodes.EV_SYN and event.code == ecodes.SYN_DROPPED:
@@ -191,7 +288,9 @@ class DeviceMonitor:
                         self.recorder.feed(
                             event,
                             source=device.path,
-                            occurred_at=time.monotonic() + (event.timestamp() - time.time()),
+                            occurred_at=event.timestamp()
+                            if getattr(device, "fd", None) in self._monotonic_fds
+                            else event.timestamp() + self._realtime_offset,
                         )
         except Exception as exc:
             self.error(str(exc))
@@ -201,6 +300,10 @@ class DeviceMonitor:
 
 
 class UInputBackend:
+    # Allow the desktop to register the newly created virtual device. The wait is
+    # handled by Replay and remains cancellable even with a zero user countdown.
+    startup_delay = 0.5
+
     def __init__(self):
         if not os.access("/dev/uinput", os.W_OK):
             raise RuntimeError(

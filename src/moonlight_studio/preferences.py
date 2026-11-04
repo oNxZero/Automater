@@ -1,0 +1,75 @@
+"""Local settings, separate from portable version-1 macro files."""
+
+import json
+from dataclasses import asdict, dataclass
+
+from .engine import PlaybackOptions
+from .storage import write_json
+
+
+@dataclass
+class Preferences:
+    device_ids: list[str] | None = None
+    speed: float = 1.0
+    repeats: int = 1
+    countdown: int = 3
+    loop_gap: float = 0.25
+    capture_keys: bool = True
+    capture_buttons: bool = True
+    capture_motion: bool = True
+    append_recording: bool = False
+    test_mode: bool = False
+
+    def validate(self):
+        PlaybackOptions(self.speed, self.repeats, self.countdown, self.loop_gap)
+        if type(self.countdown) is not int:
+            raise ValueError("Start delay must be a whole number")
+        for field in (
+            "capture_keys",
+            "capture_buttons",
+            "capture_motion",
+            "append_recording",
+            "test_mode",
+        ):
+            if type(getattr(self, field)) is not bool:
+                raise ValueError(f"Invalid {field} setting")
+        if self.device_ids is not None and (
+            not isinstance(self.device_ids, list)
+            or len(self.device_ids) > 1000
+            or any(not isinstance(s, str) or len(s) > 2000 for s in self.device_ids)
+        ):
+            raise ValueError("Invalid device selections")
+        return self
+
+    def save(self, path):
+        self.validate()
+        data = {"version": 1, **asdict(self)}
+        if len(json.dumps(data, indent=2).encode("utf-8")) > 256 * 1024:
+            raise ValueError("Preferences file is too large")
+        write_json(data, path)
+
+    @classmethod
+    def load(cls, path):
+        if not path.exists():
+            return cls()
+        with path.open("rb") as stream:
+            content = stream.read(256 * 1024 + 1)
+        if len(content) > 256 * 1024:
+            raise ValueError("Preferences file is too large")
+        try:
+            data = json.loads(content)
+        except RecursionError as exc:
+            raise ValueError("Preferences file is too deeply nested") from exc
+        if (
+            not isinstance(data, dict)
+            or type(data.get("version")) is not int
+            or data.get("version") != 1
+        ):
+            raise ValueError("Unsupported preferences version")
+        data.pop("version")
+        if set(data) - set(cls.__dataclass_fields__):
+            raise ValueError("Unknown preference fields")
+        try:
+            return cls(**data).validate()
+        except TypeError as exc:
+            raise ValueError("Invalid preferences") from exc

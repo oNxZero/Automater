@@ -153,3 +153,28 @@ synchronization, insertion, page bounds, and read-only operation during playback
 - [Qt for Python](https://doc.qt.io/qtforpython-6/gettingstarted.html)
 - [Xlib directed events](https://python-xlib.sourceforge.net/doc/html/python-xlib_14.html)
 - [Wayland model](https://wayland.freedesktop.org/docs/book/Protocol.html)
+
+## v0.3: simpler UI and Linux reliability
+
+Replace the sidebar and duplicate view controls with one compact navigation row.
+Keep properties closed until requested, consolidate file actions, and show pause/
+stop/progress only during active work. Device diagnostics belong in Devices;
+technical exception detail is available behind an explicit disclosure.
+
+Fix the evdev InputDevice context-manager assumption with explicit finally/close.
+Test against the actual installed evdev class, including pipe-fed read events and
+its slotted attributes. Identify ordinary keyboards and mouse buttons, filter
+unrelated interfaces, and label absolute-motion limitations. Open monitors before
+claiming readiness, clean up partial failures, retry nonblocking/interrupted reads,
+detect empty reads, use monotonic kernel timestamps when supported, and reject
+stale listener callbacks after refresh. Pause restores modifiers before letter keys.
+Replay allows a cancellable registration interval for newly created uinput devices.
+
+Useful features without more permanent controls: private persistent input selections
+and run/capture preferences, recommended input selection, and optional append
+recording with one-step undo. Keep macro format v1 compatible. Preference schemas
+are bounded and validated; live window handles are not persisted.
+
+Next priorities remain configurable hotkeys, per-workflow run presets, and named
+actions. Conditional blocks and visual matching need their own execution model and
+compatibility validation; they should not be added as decorative canvas controls.
