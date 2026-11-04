@@ -1,11 +1,12 @@
-# Verification of v0.10.0
+# Verification of v0.11.0
 
-Implemented and checked on 2026-11-04 in a Linux development sandbox using
+Updated and checked on 2026-11-05 in a Linux development sandbox using
 Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **298 automated tests passed**, including offscreen Qt workflows and five live X11
+- **334 tests collected**. Locally, **333 pass and one is skipped** because Weston
+  is not installed. CI installs Weston in a separate native-display job. Coverage includes offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Reproduced a Qt/PySide6 6.12.0 reference-count crash during repeated painting on
@@ -285,3 +286,32 @@ verifies the text viewport keeps its size.
   The repository remains private; publication is an owner decision documented in
   [RELEASE](RELEASE.md). Physical device/compositor/game/GPU checks listed there
   remain manual and are not established by these tests.
+
+## v0.11 Linux compatibility verification
+
+- Session tests cover headless operation, X11, Wayland with Xwayland, stale display
+  variables, explicit Qt platform overrides and Hyprland helper selection. Desktop
+  identity also falls back to XDG_SESSION_DESKTOP=plasma. An Xwayland connection
+  never changes a Wayland session into a native X11 pointer destination.
+- Runtime tests check the exact pinned Qt wheel ABI floors (x86_64 glibc 2.34 and
+  aarch64 glibc 2.39), musl rejection for standard fresh installs, custom installed
+  Qt builds, automatic supported-Python selection, explicit interpreter overrides
+  and XDG_CONFIG_HOME defaults. Official wheel filenames were checked on PyPI.
+- Private D-Bus tests verify successful read-only capability probes, missing
+  RemoteDesktop/ScreenCast interfaces, absent pointer capability, rejection before
+  any permission session, and --doctor --check-portal emitting only GetAll calls.
+  Existing approval, denial, cancellation, revocation and loop-reset tests remain.
+  A read-only probe of the actual KDE session also reported RemoteDesktop v2 and
+  ScreenCast v5 with pointer/monitor capability; no permission session was opened.
+- Native XCB GUI startup runs against a new private Xvfb server and passes locally.
+  Native Wayland uses a private headless Weston/Pixman server in CI. The child GUI
+  substitutes an empty physical-device list and never emits input. Rendering/boot
+  checks do not certify real input on KDE, GNOME, wlroots or games.
+- CI expands the full Python 3.11/3.14 suite to Ubuntu 22.04 and 24.04. Debian 12
+  and Fedora 44 containers install the app and run core/GUI smoke checks; container
+  tags were verified. Physical desktop, ARM and GPU coverage remain manual.
+- Compatibility reporting and the optional portal probe leave workflow data and
+  permissions unchanged. Source/wheel contents, launcher doctor, lint/format and
+  documentation links are checked before completion. See [the feature matrix](COMPATIBILITY.md).
+  Native Qt views at 1000×680 were inspected; Devices now scrolls so the added
+  compatibility action does not compress its capture instructions.

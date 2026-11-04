@@ -1,8 +1,11 @@
 """Real D-Bus serialization against a private fake portal; never controls a desktop."""
 
 import asyncio
+import json
+import os
 import shutil
 import subprocess
+import sys
 import threading
 
 import pytest
@@ -18,6 +21,9 @@ class FakePortal:
         self.calls = []
         self.denied = False
         self.hold_start = False
+        self.pointer_types = 2
+        self.monitor_types = 1
+        self.missing_interface = ""
         self.started = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.thread.start()
@@ -42,6 +48,23 @@ class FakePortal:
         if message.message_type != MessageType.METHOD_CALL or message.destination != SERVICE:
             return
         self.calls.append((message.member, message.signature, message.body))
+        if message.interface == "org.freedesktop.DBus.Properties" and message.member == "GetAll":
+            if self.missing_interface and message.body[0].endswith(self.missing_interface):
+                self.bus.send(
+                    Message.new_error(
+                        message,
+                        "org.freedesktop.DBus.Error.UnknownInterface",
+                        "Interface unavailable",
+                    )
+                )
+                return True
+            props = {"version": Variant("u", 1)}
+            if message.body[0].endswith("RemoteDesktop"):
+                props["AvailableDeviceTypes"] = Variant("u", self.pointer_types)
+            else:
+                props["AvailableSourceTypes"] = Variant("u", self.monitor_types)
+            self.bus.send(Message.new_method_return(message, "a{sv}", [props]))
+            return True
         if message.member in ("NotifyPointerMotionAbsolute", "Close"):
             self.bus.send(Message.new_method_return(message))
             return True
@@ -137,7 +160,7 @@ def test_portal_authorization_and_coordinate_reset_over_real_bus(qtbot, portal_s
         pointer.move((-1000, 200))
         pointer.close()
         assert connection.active
-        assert [name for name, _, _ in portal_server.calls][:4] == [
+        assert [name for name, _, _ in portal_server.calls if name != "GetAll"][:4] == [
             "CreateSession",
             "SelectDevices",
             "SelectSources",
@@ -242,3 +265,52 @@ def test_window_replay_uses_approved_portal_for_every_loop(
     finally:
         clean(win)
         cleanup(connection)
+
+
+def test_read_only_portal_probe_never_opens_a_session(portal_server):
+    from moonlight_studio.portal_probe import probe
+
+    result = probe(portal_server.address)
+    assert result["available"] and result["pointer_supported"]
+    assert [member for member, _, _ in portal_server.calls] == ["GetAll", "GetAll"]
+
+
+@pytest.mark.parametrize("missing", ["RemoteDesktop", "ScreenCast"])
+def test_missing_portal_interfaces_fail_before_permission_ui(qtbot, portal_server, missing):
+    from moonlight_studio.portal_probe import probe
+
+    portal_server.missing_interface = missing
+    result = probe(portal_server.address)
+    assert not result["available"] and missing in result["message"]
+    connection = connection_for(portal_server)
+    try:
+        with qtbot.waitSignal(connection.failed, timeout=4000):
+            connection.connect_pointer()
+        assert not connection.active
+        assert not any(member == "CreateSession" for member, _, _ in portal_server.calls)
+    finally:
+        cleanup(connection)
+
+
+def test_portal_without_pointer_does_not_prompt_for_permission(qtbot, portal_server):
+    portal_server.pointer_types = 1
+    connection = connection_for(portal_server)
+    try:
+        with qtbot.waitSignal(connection.failed, timeout=4000):
+            connection.connect_pointer()
+        assert not any(member == "CreateSession" for member, _, _ in portal_server.calls)
+    finally:
+        cleanup(connection)
+
+
+def test_doctor_portal_check_uses_only_read_only_properties(portal_server):
+    result = subprocess.run(
+        [sys.executable, "-m", "moonlight_studio.app", "--doctor", "--check-portal"],
+        env={**os.environ, "DBUS_SESSION_BUS_ADDRESS": portal_server.address},
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["pointer_portal"]["available"]
+    assert [member for member, _, _ in portal_server.calls] == ["GetAll", "GetAll"]

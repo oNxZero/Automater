@@ -11,7 +11,7 @@ Inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Studio-v0.10.0-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Studio-v0.11.0-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 
 [Get started](#get-started) · [User guide](docs/USER_GUIDE.md) · [Themes](#themes) · [Compatibility](#background-compatibility) · [Contribute](CONTRIBUTING.md)
@@ -42,6 +42,8 @@ Conditional branches, nested loops, gamepads, Windows and macOS are not implemen
 ## Get started
 
 Linux, Python 3.11+ and access to the repository are required.
+The standard Qt wheels need glibc 2.34+ on x86_64 or 2.39+ on aarch64. See the
+[distro/desktop matrix](docs/COMPATIBILITY.md) for runtime and feature differences.
 
 ```bash
 git clone https://github.com/oNxZero/moonlight-studio.git
@@ -63,6 +65,9 @@ The example opens in **Test mode**: the scheduler and highlights run without sen
 inputs. **File → Getting started** and the empty workspace's **Quick guide** explain
 the controls inside the app. `./start.sh --doctor` prints diagnostics.
 See the [installation guide](docs/INSTALL.md) for manual setup and missing libraries.
+**Devices → Check compatibility** explains your detected desktop and supported
+features. `./start.sh --doctor --check-portal` checks pointer interfaces without
+opening a permission dialog. A working screen-sharing portal alone is insufficient.
 
 ## Your first workflow
 

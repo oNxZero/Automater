@@ -1,9 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
-if [[ ! -x .venv/bin/moonlight-studio ]]; then
-    python3 -m venv .venv
+if [[ ! -x .venv/bin/python ]]; then
+    runtime_python=""
+    candidates=(python3 python3.14 python3.13 python3.12 python3.11)
+    if [[ -n "${MOONLIGHT_PYTHON:-}" ]]; then
+        candidates=("$MOONLIGHT_PYTHON")
+    fi
+    for candidate in "${candidates[@]}"; do
+        if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 11))' >/dev/null 2>&1; then
+            runtime_python="$candidate"
+            break
+        fi
+    done
+    if [[ -z "$runtime_python" ]]; then
+        echo "Moonlight Studio needs Python 3.11+. Install a supported Python or set MOONLIGHT_PYTHON to its executable." >&2
+        exit 1
+    fi
+    "$runtime_python" -m venv .venv || { echo "Could not create .venv. Install your distro's Python venv package; see docs/INSTALL.md." >&2; exit 1; }
 fi
+if ! .venv/bin/python -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then
+    echo "Existing .venv uses an unsupported Python. Rename it, then relaunch with MOONLIGHT_PYTHON=python3.11 (or newer)." >&2
+    exit 1
+fi
+.venv/bin/python - <<'PY'
+import sys
+sys.path.insert(0, "src")
+from moonlight_studio.compatibility import launch_issues
+issues = launch_issues()
+if issues:
+    print("Cannot install the standard runtime:", *issues, sep="\n", file=sys.stderr)
+    sys.exit(1)
+PY
 # Refresh installed dependencies after an update, without network work on every launch.
 if ! .venv/bin/python - <<'PY'
 from importlib.metadata import PackageNotFoundError, version

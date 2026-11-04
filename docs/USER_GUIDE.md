@@ -427,6 +427,19 @@ and saving without requiring a browser. Ctrl+Z inside a text field uses its nati
 text history; on the canvas it undoes workflow edits. Toolbar Undo/Redo apply to
 the document. Applying notes changes the document; Ctrl+S saves the JSON file.
 
+## Linux compatibility
+
+**Devices → Check compatibility** and **File → Linux compatibility** explain the
+detected distro, desktop, display server, pointer method and input requirements.
+Use **Check pointer portal** to read capability properties without requesting
+permission. Connect Wayland pointer remains the separate approval step.
+
+Core recording and desktop replay use Linux input devices on X11 and Wayland.
+Window discovery, absolute reset and background modes have different requirements.
+On a Wayland desktop that does not expose native windows, choose **Any active
+window**, then focus the game during the countdown. This mode cannot guard focus
+of an app the desktop does not expose. See the [matrix](COMPATIBILITY.md).
+
 Connections follow the same worker snapshot: completed inputs leave colored
 arrows, and a moving stream points toward the current action or next waiting input.
 Pause and Stop freeze that stream. Shorter-than-frame transitions can be skipped

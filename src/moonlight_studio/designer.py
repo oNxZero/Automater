@@ -107,6 +107,7 @@ def build_ui(w):
     menu.addSeparator()
     menu.addAction("Appearance & themes…\tCtrl+,", w.show_appearance)
     menu.addAction("Getting started…", w.show_getting_started)
+    menu.addAction("Linux compatibility…", w.show_compatibility)
     file_btn = QPushButton("File")
     file_btn.setObjectName("ghost")
     file_btn.setMenu(menu)
@@ -652,6 +653,7 @@ def build_setup(w):
     capture.addStretch()
     capture.addWidget(label("F6 records or finishes. F7 runs. F8 pauses. F12 stops."))
     capture.addWidget(button("Input access help", w.show_help, "ghost", glyph="info"))
+    capture.addWidget(button("Check compatibility", w.show_compatibility, "ghost", glyph="check"))
     columns.addWidget(capture_card, 2)
     layout.addLayout(columns, 1)
     details = QPushButton("Technical details")
@@ -664,4 +666,4 @@ def build_setup(w):
     details.toggled.connect(w.device_details.setVisible)
     layout.addWidget(details, 0, Qt.AlignLeft)
     layout.addWidget(w.device_details)
-    return page
+    return scrollable(page)

@@ -149,6 +149,25 @@ The native Qt visual pass also caught theme gallery cards compressed below their
 label height and double-mapped icon colors in Daylight; both have regressions.
 Publication and real game/compositor acceptance remain owner/manual checks in
 [RELEASE](RELEASE.md). This audit does not claim that every possible bug is gone.
+
+## v0.11 Linux compatibility findings
+
+| Finding | Fix / explicit boundary |
+| --- | --- |
+| Missing display variables were treated as X11 | Shared session detection distinguishes native X11, Wayland with Xwayland and headless sessions. Pointer reset fails clearly without a graphical desktop. |
+| Stale WAYLAND_DISPLAY / Hyprland variables selected the wrong pointer backend | An explicit XDG_SESSION_TYPE takes precedence; Hyprland requires a Wayland session and available helper. |
+| Desktop identification assumed XDG_CURRENT_DESKTOP always contained KDE | Fall back to XDG_SESSION_DESKTOP, including plasma, and use the same detection in reporting and observer startup. |
+| Wayland Qt startup depended entirely on distro defaults | Prefer the native Wayland plugin, with XCB fallback when available. Explicit user overrides are preserved. Xwayland rendering does not authorize a native pointer warp. |
+| Screen-sharing support was mistaken for pointer-control support | Read RemoteDesktop and ScreenCast capability properties before creating a permission session. The optional UI/doctor probe never requests permission. |
+| Users could not tell distro/runtime limitations from device permissions | Add a read-only compatibility panel, structured doctor report and a feature/distro matrix. |
+| The launcher blindly used an older python3 | Search supported installed interpreters; honor MOONLIGHT_PYTHON; retain unsupported existing virtual environments with repair guidance. |
+| Qt wheel ABI differences appeared as generic pip/import failures | Check fresh-install architecture/libc floors from the pinned wheel release. Preserve already installed native builds. |
+| Empty/relative XDG_CONFIG_HOME wrote configuration into the working directory | Follow XDG semantics: use the normal home config directory unless the override is absolute. |
+| Only Ubuntu offscreen rendering had CI coverage | Add Ubuntu 22.04/24.04 matrices, Debian/Fedora installation smoke checks and private native XCB/Weston GUI launches. |
+
+The core evdev/uinput path is desktop-independent when devices/permissions are
+available. Native Wayland window discovery and portal geometry remain backend
+capabilities; they are not universal. See [COMPATIBILITY](COMPATIBILITY.md).
 | Save prompt and unsaved badge did not match the workspace | Custom save dialog with explicit choices and safe cancellation; badge beside the title summary, with long summaries elided instead of wrapping. |
 | Selected foreground apps stopped immediately when unfocused | Restore/focus the chosen window after countdown, before input, with an opt-out. Identity/focus checks and cleanup remain active. Background input still requires a supported background route. |
 | Empty properties retained a stale action caption | Clear the caption and close action properties on explicit deselection. |

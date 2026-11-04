@@ -9,14 +9,16 @@ Moonlight Studio is a native PySide6 Linux app. Start with the
 python3 -m venv .venv
 .venv/bin/python -m pip install -c requirements.lock -e '.[dev]'
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
-.venv/bin/ruff check src tests
-.venv/bin/ruff format --check src tests
+.venv/bin/ruff check src tests scripts
+.venv/bin/ruff format --check src tests scripts
 .venv/bin/python -m build
 ```
 
 Install Xvfb and xauth to run the private X11 integration checks rather than skip
 them. CI runs `xvfb-run -a env QT_QPA_PLATFORM=offscreen python -m pytest -q` on
-Python 3.11 and 3.14. Tests create controlled receivers/private displays and do not
+Python 3.11 and 3.14 on Ubuntu 22.04/24.04. Additional jobs check Debian/Fedora and
+native XCB/Wayland GUI boot. Install Weston to run the headless Wayland check locally.
+Tests create controlled receivers/private displays and do not
 send input to a user's real applications. Run `./start.sh --demo` for UI work.
 
 ## Changes and bug reports

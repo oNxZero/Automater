@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from .compatibility import kde_desktop, session_type
 from .open_windows import DesktopWindow, matching_x11
 from .theme import icon
 from .widgets import button, label
@@ -101,6 +102,10 @@ class WindowPicker(QDialog):
             if visible
             else "No matching windows. Open your app, then refresh."
         )
+        if not visible and session_type() == "wayland" and not kde_desktop():
+            self.status.setText(
+                "This desktop does not expose native Wayland windows to Studio. X11/Xwayland windows can appear here; use Any active window for other apps, then focus your game during the countdown."
+            )
         self.selection_changed()
 
     def selection_changed(self, *_):

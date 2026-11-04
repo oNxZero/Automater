@@ -1,6 +1,5 @@
 import json
 import math
-import os
 import threading
 import time
 from bisect import bisect_right
@@ -26,6 +25,8 @@ from PySide6.QtWidgets import (
 from . import storage, x11
 from .annotations import AnnotationsMixin
 from .appearance import AppearanceMixin
+from .compatibility import kde_desktop, session_type
+from .compatibility_ui import CompatibilityMixin
 from .designer import build_ui
 from .dialogs import SaveChangesDialog
 from .documents import DocumentsMixin
@@ -54,6 +55,7 @@ class Bridge(QObject):
     session_ready = Signal(int, str)
     session_windows = Signal(int, object, str)
     library_ready = Signal(int, object)
+    compatibility_ready = Signal(int, object)
 
 
 def sample():
@@ -71,6 +73,7 @@ def sample():
 
 
 class MainWindow(
+    CompatibilityMixin,
     AppearanceMixin,
     DocumentsMixin,
     AnnotationsMixin,
@@ -162,6 +165,7 @@ class MainWindow(
         self.resize(1240, 800)
         self.setMinimumSize(1000, 680)
         self.appearance_dialog = None
+        self.compatibility_dialog = None
         self.apply_appearance(self.preferences.theme, self.preferences.theme_colors, persist=False)
         self.build_ui()
         self.restore_preferences()
@@ -197,11 +201,7 @@ class MainWindow(
         self.refresh_devices()
         self.refresh_windows()
         self.initializing = False
-        if (
-            not demo
-            and QApplication.platformName() != "offscreen"
-            and "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
-        ):
+        if not demo and QApplication.platformName() != "offscreen" and kde_desktop():
             self.window_observer.start()
         if self.preferences_error:
             self.show_error("Settings could not be loaded; using defaults.")
@@ -481,7 +481,7 @@ class MainWindow(
             description = (
                 "Wayland pointer control connected. Coordinates use the approved monitors."
             )
-        elif not available:
+        elif not available and session_type() == "wayland":
             description = "Wayland needs pointer permission for exact positioning. Connect below, then approve your monitors."
         if self.test_mode.isChecked():
             description = (
@@ -498,7 +498,9 @@ class MainWindow(
         self.pick_position_btn.setEnabled(
             not self.busy and not background and available and self.start_enabled.isChecked()
         )
-        self.portal_connect_btn.setVisible(not available and not background)
+        self.portal_connect_btn.setVisible(
+            session_type() == "wayland" and not available and not background
+        )
         self.portal_connect_btn.setText(
             "Reconnect pointer control" if portal_ready else "Connect Wayland pointer"
         )
@@ -914,7 +916,7 @@ class MainWindow(
         if (
             not self.demo
             and QApplication.platformName() != "offscreen"
-            and "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+            and kde_desktop()
             and not self.window_observer.snapshot()[2]
         ):
             self.window_observer.start()
@@ -1256,12 +1258,13 @@ class MainWindow(
             ):
                 from .pointer import capability
 
-                if not capability()[0] and not (
-                    self.portal_connection and self.portal_connection.active
-                ):
+                available, reason = capability()
+                if not available and not (self.portal_connection and self.portal_connection.active):
                     self.show_inspector(2)
                     raise ValueError(
                         "Coordinate reset needs Wayland pointer permission. Click Connect Wayland pointer, or disable reset."
+                        if session_type() == "wayland"
+                        else reason
                     )
             if not self.test_mode.isChecked() and script.warnings():
                 response = QMessageBox.question(

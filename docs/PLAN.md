@@ -324,3 +324,16 @@ an offline Getting started guide. Prepare a short README, installation/contribut
 guides, issue templates, security reporting and a concrete release checklist.
 Repository publication and hardware/game acceptance require the separate owner
 and physical-desktop steps documented in RELEASE.md.
+
+## v0.11: Linux feature detection and wider validation
+
+Make Linux support capability-based: central session/desktop detection, native Qt
+plugin selection with explicit-override preservation, read-only runtime reporting
+and portal property checks. Distinguish uinput/evdev access from Wayland window
+enumeration and absolute pointer control. Provide clear Any active window fallback
+and retain strict coordinate validation instead of guessing missing portal geometry.
+
+Harden the launcher for supported Python selection and pinned-wheel ABI limits;
+fix XDG path handling. Expand CI to two Ubuntu releases, Debian/Fedora containers
+and isolated native X11/Wayland GUI smoke checks. Record actual support boundaries
+and remaining hardware tests in COMPATIBILITY.md rather than claim every distro.

@@ -13,14 +13,32 @@ def main():
     parser.add_argument(
         "--doctor", action="store_true", help="Print Linux device diagnostics as JSON"
     )
+    parser.add_argument(
+        "--check-portal",
+        action="store_true",
+        help="With --doctor, check pointer portal interfaces without asking for permission",
+    )
     args = parser.parse_args()
     if not sys.platform.startswith("linux"):
-        parser.error("This release supports Linux. Windows and macOS backends are planned.")
+        parser.error("Moonlight Studio supports Linux only.")
+    if args.check_portal and not args.doctor:
+        parser.error("--check-portal must be used with --doctor")
     if args.doctor:
         from .linux_input import diagnostics
 
-        print(json.dumps(diagnostics(), indent=2))
+        report = diagnostics()
+        if args.check_portal:
+            from .portal_probe import probe
+
+            report["pointer_portal"] = probe()
+        print(json.dumps(report, indent=2))
         return 0
+    from .compatibility import configure_qt_platform
+
+    try:
+        configure_qt_platform()
+    except RuntimeError as exc:
+        parser.error(str(exc))
     from PySide6.QtWidgets import QApplication
 
     from .window import MainWindow

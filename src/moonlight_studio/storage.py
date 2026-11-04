@@ -9,7 +9,13 @@ MAX_BYTES = 32 * 1024 * 1024
 
 
 def data_dir():
-    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "moonlight-studio"
+    configured = os.environ.get("XDG_CONFIG_HOME", "")
+    root = (
+        Path(configured)
+        if configured and Path(configured).is_absolute()
+        else Path.home() / ".config"
+    )
+    return root / "moonlight-studio"
 
 
 def load(path):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "moonlight-studio"
-version = "0.10.0"
+version = "0.11.0"
 description = "A Linux input recorder and visual macro editor inspired by Moonlight"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -12,6 +12,8 @@ from dbus_next import Message, MessageType, Variant
 from dbus_next.aio import MessageBus
 from PySide6.QtCore import QObject, Signal
 
+from .portal_probe import read_capabilities
+
 SERVICE = "org.freedesktop.portal.Desktop"
 PATH = "/org/freedesktop/portal/desktop"
 REMOTE = "org.freedesktop.portal.RemoteDesktop"
@@ -154,6 +156,11 @@ class PortalConnection(QObject):
                 self.loop.stop()
                 return
             self.bus = await MessageBus(bus_address=self.bus_address).connect()
+            support = await asyncio.wait_for(read_capabilities(self.bus), 3)
+            if not support["pointer_supported"] or not support["monitors_supported"]:
+                raise RuntimeError(
+                    "This portal cannot control the pointer on physical monitors. Relative replay still works with reset disabled."
+                )
             self.bus.add_message_handler(self.response)
             for interface in ("org.freedesktop.portal.Request", "org.freedesktop.portal.Session"):
                 reply = await self.bus.call(

@@ -4,6 +4,10 @@ The repository remains private until the owner explicitly publishes it. Version
 0.10.0 prepares the code, documentation and contribution flow for a public preview;
 this document does not claim hardware/game acceptance that has not been tested.
 
+Version 0.11 adds runtime/session detection, read-only compatibility reporting,
+portal capability checks and a broader distro/display CI matrix. See
+[COMPATIBILITY](COMPATIBILITY.md) for per-feature limits.
+
 ## Prepared in the repository
 
 - MIT license, project metadata and documentation/issue URLs.

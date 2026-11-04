@@ -2,6 +2,7 @@
 
 from PySide6.QtCore import QTimer
 
+from .compatibility import session_type
 from .overlay import OverlayGroup, pointer_path
 
 
@@ -70,15 +71,9 @@ class VisualsMixin:
         def chosen(point):
             self.close_overlay()
             self.update_busy(False)
-            import os
-
             from PySide6.QtWidgets import QApplication
 
-            if (
-                QApplication.platformName() == "xcb"
-                and os.environ.get("XDG_SESSION_TYPE") != "wayland"
-                and not os.environ.get("WAYLAND_DISPLAY")
-            ):
+            if QApplication.platformName() == "xcb" and session_type() == "x11":
                 from .pointer import X11Pointer
 
                 provider = None

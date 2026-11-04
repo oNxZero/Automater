@@ -12,6 +12,7 @@ from pathlib import Path
 
 from evdev import InputDevice, UInput, ecodes, list_devices
 
+from .compatibility import environment_report, session_type
 from .engine import MODIFIER_KEYS
 from .models import KEY_CODES, MAX_STEPS, Step
 
@@ -102,12 +103,13 @@ def devices():
 def diagnostics(found=None):
     found = devices() if found is None else found
     return {
-        "session": os.environ.get("XDG_SESSION_TYPE", "unknown"),
+        "session": session_type(),
         "uinput_exists": Path("/dev/uinput").exists(),
         "uinput_writable": os.access("/dev/uinput", os.W_OK),
         "readable_devices": sum(d.readable for d in found),
         "devices": [d.__dict__ for d in found],
         "display": bool(os.environ.get("DISPLAY")),
+        "compatibility": environment_report(),
     }
 
 

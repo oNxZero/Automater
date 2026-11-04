@@ -2,8 +2,9 @@
 
 import json
 import os
-import shutil
 import subprocess
+
+from .compatibility import hyprland_available, session_type
 
 
 def coordinate(value):
@@ -13,25 +14,31 @@ def coordinate(value):
 
 
 def desktop_pointer():
-    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") and shutil.which("hyprctl"):
+    if hyprland_available():
         return HyprlandPointer()
-    if os.environ.get("XDG_SESSION_TYPE") == "wayland" or os.environ.get("WAYLAND_DISPLAY"):
+    if session_type() == "wayland":
         raise RuntimeError(
             "Exact desktop starting coordinates currently require X11 or Hyprland. "
-            "Other Wayland desktops can still replay relative input with reset disabled."
+            "Connect a compatible RemoteDesktop portal in Settings → Start, or disable reset for relative replay."
         )
-    return X11Pointer()
+    if session_type() == "x11" and os.environ.get("DISPLAY"):
+        return X11Pointer()
+    raise RuntimeError(
+        "No graphical desktop detected. Run Studio inside your X11 or Wayland session."
+    )
 
 
 def capability():
-    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") and shutil.which("hyprctl"):
+    if hyprland_available():
         return True, "Hyprland desktop coordinates (logical pixels)"
-    if os.environ.get("XDG_SESSION_TYPE") == "wayland" or os.environ.get("WAYLAND_DISPLAY"):
+    if session_type() == "wayland":
         return (
             False,
-            "Exact desktop reset is available on X11 and Hyprland. Other Wayland desktops support relative replay without reset.",
+            "Connect a RemoteDesktop-capable portal for exact reset. Screen sharing alone is insufficient; relative replay works without reset.",
         )
-    return True, "X11 desktop screen coordinates"
+    if session_type() == "x11" and os.environ.get("DISPLAY"):
+        return True, "X11 desktop screen coordinates"
+    return False, "No graphical desktop detected; start Studio inside an X11 or Wayland session."
 
 
 class X11Pointer:

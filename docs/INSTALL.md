@@ -8,6 +8,10 @@ Linux and Python 3.11+ are required. Start from the repository folder:
 
 The launcher creates `.venv`, installs the tested runtime and checks dependency
 versions after updates. It never installs system packages or changes permissions.
+It searches for a supported Python if `python3` is older than 3.11; use
+`MOONLIGHT_PYTHON=python3.12 ./start.sh` to choose one explicitly. The standard Qt
+wheels require glibc 2.34+ (x86_64) or 2.39+ (aarch64). Alpine/musl, older glibc and
+other CPUs require a compatible native build instead. See [compatibility](COMPATIBILITY.md).
 
 ## Manual installation
 
@@ -30,6 +34,18 @@ Qt needs EGL/OpenGL and keyboard/XCB libraries. Minimal Debian/Ubuntu systems ma
 need `libegl1 libopengl0 libgl1 libxkbcommon0 libxcb-cursor0`. Qt's Wayland plugin is
 included. The separate-session mode additionally needs Gamescope and GPU support;
 follow [its guide](ISOLATED_SESSIONS.md) only if using that mode.
+
+On Fedora, common equivalents include `python3-pip python3-devel gcc kernel-headers
+mesa-libEGL libglvnd-opengl mesa-libGL libxkbcommon libxcb xcb-util-cursor fontconfig
+freetype`. On minimal X11 installs, Qt also needs XCB ICCCM/keysyms/XKB libraries.
+On native Wayland it needs libwayland client/cursor/EGL libraries. Package names
+vary by distro; the CI workflow shows the exact Debian/Fedora smoke-test setup.
+
+Use **File → Linux compatibility** or `./start.sh --doctor` to report your runtime
+without guessing from the distro name. `--doctor --check-portal` checks pointer
+interfaces without permission prompts. GNOME, KDE, wlroots and other backends can
+implement different portal interfaces; do not install an arbitrary backend solely
+because it supports screen sharing.
 
 The runtime is constrained to Qt/PySide6 6.11.x, with 6.11.2 tested in the lock file.
 Do not upgrade it independently without running the native painting and clipboard
