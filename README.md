@@ -10,7 +10,7 @@ Record your keyboard and mouse. Shape the sequence visually. Run it your way.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Studio-v0.7-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Studio-v0.8-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 
 A native Python desktop app inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
@@ -34,6 +34,37 @@ Your original input samples and timings stay available in the **Events** view.
 | Connected keyboard, mouse, wait and path cards | Speed, repeats, start delay and loop gap | JSON import and export |
 | Click a card to edit its properties | Pause, resume and F12 emergency stop | Atomic saves and autosave recovery |
 | Insert between cards; duplicate or reorder | Watch the active action during replay | Undo / redo up to 50 event edits |
+
+## New in v0.8: a workspace that fits your routine
+
+- **Responsive grid:** columns adapt to window width, zoom and the inspector. A
+  wide monitor uses its available space; resizing keeps your place in the routine.
+- **Continuous camera motion:** playback retargets a damped camera without resetting
+  its velocity. Short actions no longer restart an easing animation every frame.
+  Turn Follow playback off whenever you want to inspect elsewhere.
+- **Your saved JSON files in Library:** discover the library folder, known save
+  locations, recently opened files and workflows saved beside the launcher. Add
+  another folder, search filenames/titles and double-click to open. Scanning runs
+  outside the UI thread and ignores unrelated JSON/configuration files.
+- **Tab actions:** right-click a tab to rename, save, save as, close or close other
+  workflows. Double-click renames too. Saved files are renamed in their current
+  folder, with collision checks; unsaved edits remain in the tab.
+- **Live recording preview:** see recent captured actions, elapsed time, event count
+  and held keys while recording. Finish with F6 to add them; Discard keeps your
+  previous workflow. The preview never writes partial captures into the undo stack.
+- **Notes and visual groups:** add a Note / text card or use Ctrl+Shift+N. Select
+  actions and press Ctrl+G to create a named, colored group; Ctrl+Shift+G ungroups.
+  Click a group header to select its members. Notes and borders are visual only;
+  copy/paste, editing, save/recovery and Undo preserve their metadata.
+- **Clear save state:** unsaved changes sit beside the workflow summary. A custom
+  Save / Discard / Keep editing dialog replaces the system question prompt.
+- **Bring your app forward:** desktop playback can restore and focus the selected
+  window after the countdown. The option is on by default. This still uses normal
+  desktop input; independent background input needs a compatible X11 window or a
+  separate game session.
+
+![A wide monitor uses the available grid width](docs/wide-workflow.png)
+![Recent inputs while recording](docs/recording-preview.png)
 
 ## New in v0.7: continuous workflows and open-window selection
 
@@ -364,8 +395,8 @@ your character, camera or game state. See [platform implementation notes](docs/P
 Click **Choose open window** to search running windows by title or application.
 KDE Plasma discovery includes native Wayland windows; other desktops currently list
 X11/Xwayland windows. No executable file is needed to select an existing window.
-Active desktop uses your normal pointer and requires the chosen window to stay
-focused. Independent input uses Existing window (best effort) or a new Gamescope
+Active desktop uses your normal pointer. By default it brings the chosen window
+forward after the countdown; the window must then stay focused. Independent input uses Existing window (best effort) or a new Gamescope
 session. Window identity and liveness are checked during playback; losing the
 target stops playback. Background key mapping assumes the standard Xorg/Xwayland
 evdev XKB mapping. Background mouse movement is a virtual cursor starting in the
@@ -388,11 +419,13 @@ they are not screen-coordinate recordings. Scripts have a 200,000-step limit.
 Device selections and run/capture preferences are saved privately in `preferences.json`.
 Window handles are never restored across restarts. These preferences are per application;
 existing version-1 macro files remain readable. Scripts using advanced controls or
-starting coordinates are saved in version 2; older Studio releases cannot read those files.
+starting coordinates are saved in version 2. Notes and named visual groups use
+version 3 and require Studio v0.8 or newer. Plain version-1/2 workflows retain their
+format when those features are unused.
 
 Configuration lives in `$XDG_CONFIG_HOME/moonlight-studio` (normally
 `~/.config/moonlight-studio`). Saved library scripts are under `scripts/`;
-unfinished edits are autosaved to `recovery.json` every five seconds while idle.
+unfinished edits are autosaved to per-tab `recovery-*.json` files every five seconds while idle.
 Stopping a recording also autosaves its result. Recordings in progress are held
 in memory until stopped. Autosave does not overwrite your named script. A clean
 save clears recovery; normal close prompts for unsaved changes. An incomplete

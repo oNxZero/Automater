@@ -83,6 +83,7 @@ class Replay:
             list(script.steps),
             script.version,
             dict(script.start) if script.start is not None else None,
+            {key: dict(value) for key, value in script.groups.items()},
         )
         if snapshot.start is not None and options.start_position is None:
             options = replace(
@@ -92,7 +93,7 @@ class Replay:
             )
         if options.start_position is not None:
             options = replace(options, start_position=tuple(options.start_position))
-        if not any(s.enabled for s in snapshot.steps):
+        if not any(s.runnable for s in snapshot.steps):
             raise ValueError("Add or enable at least one step first")
         self._stop = self._paused = False
         self._timeline = {
@@ -105,7 +106,7 @@ class Replay:
             "last_activity_row": -1,
             "held_rows": (),
             "completed_events": 0,
-            "enabled_events": sum(s.enabled for s in snapshot.steps),
+            "enabled_events": sum(s.runnable for s in snapshot.steps),
             "loop": 0,
             "loop_elapsed": 0.0,
             "loop_duration": 0.0,
@@ -215,6 +216,12 @@ class Replay:
             deadline = self._wait(countdown_end, _NoCheck(), held)
             if deadline is None:
                 return
+            if hasattr(backend, "activate"):
+                self._publish("activating", deadline=None, wait_duration=0.0)
+                self.notify("state", "Bringing the selected window forward…")
+                backend.activate()
+                if self._stop:
+                    return
             backend.check()
             self.notify("state", "Playing")
             loop = 0
@@ -227,7 +234,7 @@ class Replay:
                 for index, step in enumerate(script.steps):
                     if index % 512 == 0 and self._stop:
                         return
-                    if step.enabled:
+                    if step.runnable:
                         scheduled.append(
                             (index, step, step.sample_delay(self.rng) / 1000 / options.speed)
                         )

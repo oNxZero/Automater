@@ -12,8 +12,9 @@ from .actions import (
     CLIPBOARD_MIME,
     KINDS,
     MAX_CLIPBOARD_BYTES,
+    clone_selection,
     create_action,
-    decode_steps,
+    decode_selection,
     encode_steps,
     randomize_steps,
 )
@@ -26,7 +27,7 @@ class EditingMixin:
     def refresh_workflow(self):
         self.blocks = blocks_for(self.model.steps)
         row = min(self.selection_anchor, len(self.model.steps) - 1)
-        self.workflow.canvas.rebuild(self.blocks, row)
+        self.workflow.canvas.rebuild(self.blocks, row, self.model.groups)
         if self.pending_rows is not None:
             rows, self.pending_rows = self.pending_rows, None
             indices = {
@@ -117,6 +118,8 @@ class EditingMixin:
             self.workflow.update_footer()
             if open_inspector and blocks:
                 self.show_inspector(0)
+            elif open_inspector and not blocks and self.inspector_stack.currentIndex() == 0:
+                self.hide_inspector()
         finally:
             self._sync_selection = False
 
@@ -152,6 +155,8 @@ class EditingMixin:
         for kind, (title, glyph) in enumerate(KINDS):
             item = menu.addAction(icon(glyph), title)
             item.triggered.connect(lambda checked=False, k=kind, r=row: self.compose_action(k, r))
+        menu.addSeparator()
+        menu.addAction(icon("note"), "Note / text…", lambda: self.compose_note(row))
         menu.exec(QCursor.pos())
 
     def compose_action(self, kind, row=None):
@@ -159,7 +164,7 @@ class EditingMixin:
         if dialog.exec() == QDialog.Accepted:
             self.insert_steps(dialog.steps, row, "Add action")
 
-    def insert_steps(self, steps, row=None, description="Paste actions"):
+    def insert_steps(self, steps, row=None, description="Paste actions", groups=None):
         if self.busy or not steps:
             return
         if len(self.model.steps) + len(steps) > MAX_STEPS:
@@ -171,7 +176,11 @@ class EditingMixin:
             raise ValueError("Invalid insertion position")
         self.selection_anchor = at
         self.pending_rows = list(range(at, at + len(steps)))
-        self.model.commit(self.model.steps[:at] + list(steps) + self.model.steps[at:], description)
+        self.model.commit(
+            self.model.steps[:at] + list(steps) + self.model.steps[at:],
+            description,
+            {**self.model.groups, **(groups or {})},
+        )
         self.navigate(0, 1 if self.events_btn.isChecked() else 0)
         if self.active_block and not self.events_btn.isChecked():
             self.select_block(self.active_block)
@@ -214,6 +223,18 @@ class EditingMixin:
 
     def edited_subset(self, block, values):
         subset = list(self.model.steps[block.start : block.end])
+        if block.kind == "note":
+            changed = values.get("_changed")
+            return [
+                replace(
+                    subset[0],
+                    **{
+                        key: values[key]
+                        for key in ("title", "text")
+                        if changed is None or key in changed
+                    },
+                )
+            ]
         original = sum(s.delay_ms for s in subset[1:])
         original_max = sum(s.maximum_ms for s in subset[1:])
         changed = values.get("_changed")
@@ -257,7 +278,7 @@ class EditingMixin:
         rows = self.selected_rows()
         if not rows:
             return False
-        data = encode_steps([self.model.steps[r] for r in rows])
+        data = encode_steps([self.model.steps[r] for r in rows], self.model.groups)
         mime = QMimeData()
         mime.setData(CLIPBOARD_MIME, data)
         mime.setText(data.decode())
@@ -274,13 +295,14 @@ class EditingMixin:
         )
         if raw.size() > MAX_CLIPBOARD_BYTES:
             raise ValueError("Clipboard exceeds the 32 MiB limit")
-        self.insert_steps(decode_steps(bytes(raw)))
+        steps, groups = clone_selection(*decode_selection(bytes(raw)))
+        self.insert_steps(steps, groups=groups)
 
     def duplicate(self):
         if not self.busy:
-            self.insert_steps(
-                [self.model.steps[r] for r in self.selected_rows()], description="Duplicate actions"
-            )
+            selected = [self.model.steps[r] for r in self.selected_rows()]
+            steps, groups = clone_selection(selected, self.model.groups)
+            self.insert_steps(steps, description="Duplicate actions", groups=groups)
 
     def delete(self):
         if self.busy:
@@ -337,7 +359,7 @@ class EditingMixin:
             QMessageBox.information(
                 self,
                 "Workflow shortcuts",
-                "Ctrl+C / X / V  Copy / cut / paste\nCtrl+D  Duplicate\nCtrl+A  Select all actions (all pages)\nDelete / Backspace  Remove selection\nCtrl+Z / Ctrl+Shift+Z  Undo / redo\nEsc  Clear selection\n\nCtrl-click  Add/remove an action\nShift-click or Shift+arrows  Select a range\nLeft-drag empty space  Box select\nAlt+arrows  Move selection\nMiddle-drag empty space  Pan\nCtrl+wheel or Ctrl+ +/−  Zoom\nCtrl+0  Fit\n\nF6  Record / finish\nF7  Run / stop\nF8  Pause / resume\nF12  Emergency stop",
+                "Ctrl+C / X / V  Copy / cut / paste\nCtrl+D  Duplicate\nCtrl+A  Select the entire workflow\nDelete / Backspace  Remove selection\nCtrl+Z / Ctrl+Shift+Z  Undo / redo\nEsc  Clear selection\n\nCtrl-click  Add/remove an action\nShift-click or Shift+arrows  Select a range\nLeft-drag empty space  Box select\nAlt+arrows  Move selection\nMiddle-drag empty space  Pan\nCtrl+wheel or Ctrl+ +/−  Zoom\nCtrl+0  Fit\nCtrl+G / Ctrl+Shift+G  Group / ungroup selection\nCtrl+Shift+N  Add a note\nRight-click a tab  Rename, save or close\n\nF6  Record / finish\nF7  Run / stop\nF8  Pause / resume\nF12  Emergency stop",
             )
             return
         try:
@@ -360,6 +382,12 @@ class EditingMixin:
                 self.duplicate()
             elif command == "delete":
                 self.delete()
+            elif command == "note":
+                self.compose_note()
+            elif command == "group":
+                self.group_selection()
+            elif command == "ungroup":
+                self.ungroup_selection()
             elif command == "rerecord":
                 self.rerecord_selection()
             elif command == "preview_pointer":
@@ -423,7 +451,7 @@ class EditingMixin:
                 backwards = command.endswith(("left", "up"))
                 delta = -1 if backwards else 1
                 if canvas.layout_mode == "grid" and command.endswith(("up", "down")):
-                    delta *= 4
+                    delta *= canvas.grid_columns
                 current = (
                     (min(selected) if backwards else max(selected))
                     if selected

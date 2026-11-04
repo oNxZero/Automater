@@ -1,11 +1,12 @@
 """Versioned, data-only scripts. Importing a script never executes Python."""
 
 import math
+import re
 from dataclasses import asdict, dataclass, field
 
 from evdev import ecodes
 
-ACTIONS = ("key_down", "key_up", "move", "scroll", "wait")
+ACTIONS = ("key_down", "key_up", "move", "scroll", "wait", "note")
 BUTTONS = {
     "BTN_LEFT",
     "BTN_RIGHT",
@@ -49,8 +50,20 @@ class Step:
     enabled: bool = True
     delay_max_ms: float | None = None
     standalone: bool = False
+    title: str = ""
+    text: str = ""
+    group_id: str = ""
 
     def __post_init__(self):
+        for value, name, limit in ((self.title, "Note title", 120), (self.text, "Note text", 4000)):
+            if not isinstance(value, str) or len(value) > limit:
+                raise ValueError(f"{name} must contain at most {limit:,} characters")
+        if not isinstance(self.group_id, str) or (
+            self.group_id and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", self.group_id)
+        ):
+            raise ValueError("Invalid workflow group identity")
+        if self.action == "note" and (self.delay_ms != 0 or self.delay_max_ms is not None):
+            raise ValueError("Notes are visual only and must have zero delay")
         number(self.delay_ms, "Delay (ms)", 0, 3_600_000)
         if self.delay_max_ms is not None:
             number(self.delay_max_ms, "Maximum delay (ms)", self.delay_ms, 3_600_000)
@@ -68,6 +81,10 @@ class Step:
             raise ValueError("Enabled must be true or false")
         if type(self.standalone) is not bool:
             raise ValueError("Standalone must be true or false")
+
+    @property
+    def runnable(self):
+        return self.enabled and self.action != "note"
 
     @property
     def maximum_ms(self):
@@ -94,10 +111,11 @@ class Script:
     steps: list[Step] = field(default_factory=list)
     version: int = 1
     start: dict | None = None
+    groups: dict = field(default_factory=dict)
 
     def validate(self):
-        if type(self.version) is not int or self.version not in (1, 2):
-            raise ValueError("Unsupported script version; expected version 1 or 2")
+        if type(self.version) is not int or self.version not in (1, 2, 3):
+            raise ValueError("Unsupported script version; expected version 1, 2 or 3")
         if not isinstance(self.name, str) or not 1 <= len(self.name.strip()) <= 120:
             raise ValueError("Script name must contain 1–120 characters")
         if not isinstance(self.notes, str) or len(self.notes) > 20_000:
@@ -106,6 +124,21 @@ class Script:
             raise ValueError(f"A script can contain at most {MAX_STEPS:,} steps")
         if not all(isinstance(step, Step) for step in self.steps):
             raise ValueError("Invalid script steps")
+        if not isinstance(self.groups, dict) or len(self.groups) > 2000:
+            raise ValueError("A workflow can contain at most 2,000 visual groups")
+        for identity, group in self.groups.items():
+            if not isinstance(identity, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", identity):
+                raise ValueError("Invalid workflow group identity")
+            if not isinstance(group, dict) or set(group) != {"name", "color"}:
+                raise ValueError("Invalid workflow group fields")
+            if not isinstance(group["name"], str) or not 1 <= len(group["name"].strip()) <= 120:
+                raise ValueError("Group names must contain 1–120 characters")
+            if not isinstance(group["color"], str) or not re.fullmatch(
+                r"#[0-9a-fA-F]{6}", group["color"]
+            ):
+                raise ValueError("Choose a valid group color")
+        if any(step.group_id and step.group_id not in self.groups for step in self.steps):
+            raise ValueError("Workflow contains an undefined visual group")
         if self.start is not None:
             from .pointer import coordinate
 
@@ -125,7 +158,7 @@ class Script:
 
     @property
     def duration_ms(self):
-        return sum(s.delay_ms for s in self.steps if s.enabled)
+        return sum(s.delay_ms for s in self.steps if s.runnable)
 
     def warnings(self):
         held, warnings = set(), []
@@ -154,6 +187,16 @@ class Script:
             for s in self.steps
         ):
             data["version"] = 2
+        if self.groups or any(
+            s.action == "note" or s.group_id or s.title or s.text for s in self.steps
+        ):
+            data["version"] = 3
+        if data["version"] < 3:
+            data.pop("groups")
+        for step in data["steps"]:
+            for field_name in ("title", "text", "group_id"):
+                if not step[field_name]:
+                    step.pop(field_name)
         if data["version"] == 1:
             data.pop("start")
             for step in data["steps"]:
@@ -163,7 +206,14 @@ class Script:
 
     @classmethod
     def from_dict(cls, data):
-        if not isinstance(data, dict) or set(data) - {"name", "notes", "steps", "version", "start"}:
+        if not isinstance(data, dict) or set(data) - {
+            "name",
+            "notes",
+            "steps",
+            "version",
+            "start",
+            "groups",
+        }:
             raise ValueError("Invalid script fields")
         if "version" not in data or not isinstance(data.get("steps"), list):
             raise ValueError("Script requires a version and a steps array")

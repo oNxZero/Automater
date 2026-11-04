@@ -6,9 +6,10 @@ from uuid import uuid4
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QUndoStack
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QMenu, QMessageBox
 
 from . import storage
+from .dialogs import NameDialog
 from .models import Script
 
 
@@ -51,6 +52,7 @@ class DocumentsMixin:
             "gap": self.gap.value(),
             "test": self.test_mode.isChecked(),
             "mode": self.mode.currentIndex(),
+            "activate_target": self.activate_target.isChecked(),
             "target": self.target.currentData(),
         }
         if doc.script.to_dict() != doc.saved:
@@ -59,7 +61,7 @@ class DocumentsMixin:
             except (OSError, ValueError) as exc:
                 self.show_error(f"Autosave unavailable: {exc}")
 
-    def update_document_title(self):
+    def update_document_title(self, dirty=None):
         if self.active_document_id is None:
             return
         for index in range(self.document_tabs.count()):
@@ -67,10 +69,97 @@ class DocumentsMixin:
                 title = (
                     self.path.stem if self.path else self.name.text().strip() or "Untitled workflow"
                 ).replace("&", "&&")
-                self.document_tabs.setTabText(index, title + (" *" if self.dirty() else ""))
+                self.document_tabs.setTabText(
+                    index, title + (" *" if (self.dirty() if dirty is None else dirty) else "")
+                )
                 self.document_tabs.setTabToolTip(
                     index, str(self.path) if self.path else "Unsaved workflow"
                 )
+                break
+
+    def document_menu(self, position):
+        index = self.document_tabs.tabAt(position)
+        if self.busy or index < 0:
+            return
+        menu = QMenu(self)
+        for title, callback in (
+            ("Rename…", lambda: self.rename_document(index)),
+            ("Save", lambda: self.document_action(index, self.save_script)),
+            ("Save as…", lambda: self.document_action(index, self.save_as)),
+            ("Close workflow", lambda: self.close_document(index)),
+            ("Close other workflows", lambda: self.close_other_documents(index)),
+        ):
+            menu.addAction(title, callback)
+        menu.exec(self.document_tabs.mapToGlobal(position))
+
+    def document_action(self, index, callback):
+        self.document_tabs.setCurrentIndex(index)
+        callback()
+
+    def rename_document(self, index, name=None):
+        if self.busy or index < 0:
+            return
+        self.document_tabs.setCurrentIndex(index)
+        if name is None:
+            name = NameDialog.ask(
+                self,
+                "Rename workflow",
+                self.path.stem if self.path else self.name.text(),
+                "Saved files are renamed in their current folder. Your unsaved changes stay in this tab.",
+            )
+        if name is None:
+            return
+        name = name.strip()
+        if (
+            not name
+            or len(name) > 120
+            or name in (".", "..")
+            or any(c in name for c in ("/", "\\", "\x00"))
+        ):
+            self.show_error("Choose a name containing 1–120 characters, without folder separators.")
+            return
+        try:
+            old = self.path
+            if old is not None:
+                new = old.with_name(name + ".json")
+                if new != old:
+                    if new.exists() or any(
+                        doc.path and doc.path.resolve() == new.resolve()
+                        for key, doc in self.documents.items()
+                        if key != self.active_document_id
+                    ):
+                        raise ValueError(
+                            "A workflow with that filename already exists. Choose a different name."
+                        )
+                    old.rename(new)
+                    self.path = new
+                    self.documents[self.active_document_id].path = new
+                    self.library_entries.pop(str(old), None)
+                    self.preferences.recent_scripts = [
+                        p for p in self.preferences.recent_scripts if p != str(old)
+                    ]
+            self.name.setText(name)
+            self.edited()
+            if self.path:
+                self.remember_workflow(self.path, self.script())
+            self.status.setText(
+                "Workflow renamed"
+                + (" · save to keep the updated title in the file" if self.dirty() else "")
+            )
+        except (OSError, ValueError) as exc:
+            self.show_error(str(exc))
+
+    def close_other_documents(self, index):
+        keep = self.document_id(index)
+        for other in range(self.document_tabs.count() - 1, -1, -1):
+            if self.document_id(other) != keep:
+                count = self.document_tabs.count()
+                self.close_document(other)
+                if self.document_tabs.count() == count:
+                    break
+        for remaining in range(self.document_tabs.count()):
+            if self.document_id(remaining) == keep:
+                self.document_tabs.setCurrentIndex(remaining)
                 break
 
     def load_script(self, script, path=None, recovery=None):
@@ -138,6 +227,7 @@ class DocumentsMixin:
                 widget.setValue(value)
             self.test_mode.setChecked(view["test"])
             self.mode.setCurrentIndex(view["mode"])
+            self.activate_target.setChecked(view.get("activate_target", True))
             target = self.target_index(view["target"])
             if target < 0 and view["mode"] == 0 and view["target"] is not None:
                 self.target.addItem("Unavailable · " + view["target"].title, view["target"])
@@ -173,6 +263,7 @@ class DocumentsMixin:
             canvas = self.workflow.canvas
             if view:
                 canvas.setTransform(view["transform"])
+                canvas.queue_reflow()
                 canvas.horizontalScrollBar().setValue(view["horizontal"])
                 canvas.verticalScrollBar().setValue(view["vertical"])
                 canvas.reveal_requested = False

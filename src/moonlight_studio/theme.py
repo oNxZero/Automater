@@ -12,6 +12,7 @@ MUTED = "#9199b3"
 BASE = "#11131e"
 PANEL = "#1b1e2e"
 COLORS = {
+    "note": "#e8c58a",
     "key": "#b5a4fa",
     "mouse": "#83b8f2",
     "wait": "#e8c58a",
@@ -21,6 +22,8 @@ COLORS = {
 }
 
 PATHS = {
+    "note": '<path d="M4 2h12v12l-4 4H4Zm8 16v-4h4M7 6h6m-6 4h6"/>',
+    "group": '<rect x="2" y="3" width="16" height="14" rx="3" stroke-dasharray="3 2"/><path d="M6 7h8m-8 4h5"/>',
     "press": '<rect x="3" y="10" width="14" height="8" rx="2"/><path d="M10 2v10m-3-3 3 3 3-3"/>',
     "release": '<rect x="3" y="10" width="14" height="8" rx="2"/><path d="M10 11V2M7 5l3-3 3 3"/>',
     "select": '<path d="M3 3h5m-5 0v5m14-5h-5m5 0v5M3 17h5m-5 0v-5m14 5h-5m5 0v-5"/>',
@@ -81,6 +84,7 @@ def font(size=10, bold=False):
 
 
 STYLE = """
+QLabel#saveState {color: #e8c58a; background: #302b30; border: 1px solid #514354; border-radius: 5px; padding: 3px 8px; font-size: 11px;}
 QWidget { color: #e2e5f4; font-family: 'Inter', 'Noto Sans', sans-serif; font-size: 13px; }
 QTabBar { background: transparent; }
 QTabBar::tab { background: #171b29; color: #9199b3; border: 1px solid #2d3248;

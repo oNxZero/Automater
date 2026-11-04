@@ -103,7 +103,7 @@ def test_large_recording_has_bounded_canvas_and_retains_raw_samples(qtbot, tmp_p
     assert canvas.node_position(0) == first
     assert len(canvas.nodes) < VIRTUALIZE_AFTER
     canvas.highlight(len(steps) - 1)
-    qtbot.wait(350)
+    qtbot.wait(800)
     assert 10000 in canvas.nodes
     assert len(canvas.nodes) < VIRTUALIZE_AFTER
     clean(win)
@@ -223,9 +223,9 @@ def test_playback_camera_has_intermediate_positions_and_can_be_disabled(
     initial = canvas.horizontalScrollBar().value()
     canvas.follow_index(5)
     assert abs(canvas.horizontalScrollBar().value() - initial) <= 2
-    canvas.camera.setCurrentTime(120)
+    canvas.camera.advance(0.12)
     middle = canvas.horizontalScrollBar().value()
-    canvas.camera.setCurrentTime(280)
+    canvas.camera.advance(0.8)
     final = canvas.horizontalScrollBar().value()
     assert initial < middle < final
     win.workflow.follow_btn.setChecked(False)

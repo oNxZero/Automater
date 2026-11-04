@@ -1,5 +1,6 @@
 """Continuous workflow canvas with viewport virtualization and smooth playback follow."""
 
+import html
 import math
 from bisect import bisect_right
 from dataclasses import dataclass
@@ -20,7 +21,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .camera import CameraFollower
 from .editor import editing_command
+from .group_canvas import GroupCanvasMixin
 from .run_feedback import block_state
 from .theme import COLORS, MUTED, TEXT, font, icon
 from .workflow_drag import WorkflowDragMixin
@@ -67,6 +70,7 @@ class Block:
     duration: float
     enabled: bool
     duration_max: float = 0
+    group_id: str = ""
 
 
 def blocks_for(steps):
@@ -81,6 +85,7 @@ def blocks_for(steps):
             and not steps[end].standalone
             and steps[end].action == "key_up"
             and steps[end].code == step.code
+            and steps[end].group_id == step.group_id
             and steps[end].enabled == step.enabled
         ):
             end += 1
@@ -96,6 +101,7 @@ def blocks_for(steps):
                 and not step.standalone
                 and not steps[end].standalone
                 and steps[end].action == kind
+                and steps[end].group_id == step.group_id
                 and steps[end].enabled == step.enabled
             ):
                 duration += steps[end].delay_ms
@@ -103,6 +109,8 @@ def blocks_for(steps):
                 end += 1
             title = "Move pointer" if kind == "move" else "Scroll"
             detail = f"X {dx:+,}   Y {dy:+,}"
+        elif step.action == "note":
+            kind, title, detail = "note", step.title or "Note", step.text
         elif step.action == "wait":
             kind, title = "wait", "Timer"
             detail = f"Wait {timing_range(duration, step.maximum_ms)}"
@@ -122,6 +130,7 @@ def blocks_for(steps):
                 duration,
                 step.enabled,
                 sum(s.maximum_ms for s in steps[i:end]),
+                step.group_id,
             )
         )
         i = end
@@ -143,9 +152,9 @@ class Node(QGraphicsObject):
         self.animation.setDuration(140)
         self.animation.setEasingCurve(QEasingCurve.OutCubic)
         self.animation.valueChanged.connect(self.animate_emphasis)
-        self.setToolTip(
-            f"{block.title}\nEvents {block.start + 1}–{block.end}\nClick to edit · drag to preview a new position"
-        )
+        description = block.detail + "\n" if block.kind == "note" else ""
+        tooltip = f"{block.title}\n{description}Events {block.start + 1}–{block.end}\nClick to edit · drag to preview a new position"
+        self.setToolTip("<qt>" + html.escape(tooltip).replace("\n", "<br>") + "</qt>")
 
     def boundingRect(self):
         return QRectF(-5, -5, CARD_WIDTH + 10, CARD_HEIGHT + 15)
@@ -203,9 +212,36 @@ class Node(QGraphicsObject):
         )
         painter.setFont(font(11, True))
         painter.setPen(QColor(TEXT))
-        painter.drawText(QRectF(16, 62, 174, 24), Qt.AlignVCenter, self.block.title)
+        painter.drawText(
+            QRectF(16, 62, 174, 24),
+            Qt.AlignVCenter,
+            painter.fontMetrics().elidedText(self.block.title, Qt.ElideRight, 174),
+        )
         painter.setFont(font(9))
         painter.setPen(QColor("#a0aac5"))
+        if self.block.kind == "note":
+            metrics = painter.fontMetrics()
+            key = (metrics.height(), metrics.horizontalAdvance("Moonlight"))
+            if getattr(self, "_note_key", None) != key:
+                words, lines = self.block.detail.split(), []
+                for line_index in range(3):
+                    if not words:
+                        break
+                    if line_index == 2:
+                        lines.append(metrics.elidedText(" ".join(words), Qt.ElideRight, 174))
+                        break
+                    line = words.pop(0)
+                    while words and metrics.horizontalAdvance(line + " " + words[0]) <= 174:
+                        line += " " + words.pop(0)
+                    lines.append(metrics.elidedText(line, Qt.ElideRight, 174))
+                self._note_key, self._note_lines = key, lines
+            for line_index, line in enumerate(self._note_lines):
+                painter.drawText(
+                    QRectF(16, 88 + line_index * metrics.height(), 174, metrics.height()),
+                    Qt.AlignVCenter,
+                    line,
+                )
+            return
         painter.drawText(QRectF(16, 88, 174, 20), Qt.AlignVCenter, self.block.detail)
         painter.setPen(QPen(QColor("#32384c"), 1))
         painter.drawLine(16, 115, 188, 115)
@@ -293,6 +329,9 @@ class Node(QGraphicsObject):
         menu = QMenu()
         for text, action in (
             ("Copy\tCtrl+C", "copy"),
+            ("Add note after selection…", "note"),
+            ("Group selection…\tCtrl+G", "group"),
+            ("Ungroup selection\tCtrl+Shift+G", "ungroup"),
             ("Cut\tCtrl+X", "cut"),
             ("Paste after selection\tCtrl+V", "paste"),
             ("Duplicate\tCtrl+D", "duplicate"),
@@ -383,12 +422,13 @@ class StartPoint(QGraphicsObject):
         event.accept()
 
 
-class Canvas(WorkflowDragMixin, QGraphicsView):
+class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
     selected = Signal(object)
     insertRequested = Signal(int)
     reorderRequested = Signal(int, int)
     command = Signal(str)
     zoomChanged = Signal(int)
+    groupRequested = Signal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -406,6 +446,7 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
             "Workflow. Left-drag empty space to box select. Middle-drag to pan. Ctrl-click adds selection."
         )
         self.blocks, self.starts, self.nodes = [], [], {}
+        self.note_count = 0
         self.selected_indices = set()
         self.anchor = None
         self._rendering = False
@@ -420,14 +461,18 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
         self.drag_scroll.timeout.connect(self.scroll_drag)
         self.follow_enabled = True
         self.follow_target = None
-        self.camera = QVariantAnimation(self)
-        self.camera.setDuration(280)
-        self.camera.setEasingCurve(QEasingCurve.OutCubic)
-        self.camera.valueChanged.connect(self.centerOn)
+        self.camera = CameraFollower(self)
+        self.camera.positionChanged.connect(self.centerOn)
+        self.grid_columns = 4
+        self._reflow_queued = False
+        self._reflow_pending = False
         self.layout_mode = "horizontal"
         self.start_label = "START"
         self.execution_states = {}
         self.execution_trace = None
+        self.groups = {}
+        self.group_items = {}
+        self.group_spans, self.group_starts = [], []
         self.scene().selectionChanged.connect(self.selection_changed)
         self.horizontalScrollBar().valueChanged.connect(self.queue_visible_nodes)
         self.verticalScrollBar().valueChanged.connect(self.queue_visible_nodes)
@@ -449,14 +494,19 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
         if self.layout_mode == "vertical":
             return QPointF(136, 110 + i * 214)
         if self.layout_mode == "grid":
-            return QPointF(136 + (i % 4) * PITCH, 136 + (i // 4) * 224)
+            return QPointF(
+                136 + (i % self.grid_columns) * PITCH, 136 + (i // self.grid_columns) * 224
+            )
         return QPointF(136 + i * PITCH, 136)
 
     def node_x(self, index):
         return self.node_position(index).x()
 
-    def rebuild(self, blocks, selected_row=-1):
+    def rebuild(self, blocks, selected_row=-1, groups=None):
         self.blocks = blocks
+        self.note_count = sum(block.kind == "note" for block in blocks)
+        self.groups = groups or {}
+        self.build_group_spans()
         self.starts = [b.start for b in blocks]
         self.selected_indices = set()
         if selected_row >= 0 and blocks:
@@ -467,6 +517,8 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
             self.reveal_index(index)
 
     def render_canvas(self):
+        if self.layout_mode == "grid":
+            self.grid_columns = self.desired_grid_columns()
         self.camera.stop()
         self.follow_target = None
         self.drag_scroll.stop()
@@ -475,21 +527,14 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
         self._rendering = True
         self.scene().blockSignals(True)
         self.scene().clear()
-        self.nodes, self.decorations = {}, {}
+        self.nodes, self.decorations, self.group_items = {}, {}, {}
+        self.update_scene_geometry()
         first = self.node_position(0)
-        last = self.node_position(max(0, len(self.blocks) - 1))
-        right = (
-            136 + 3 * PITCH + CARD_WIDTH if self.layout_mode == "grid" else last.x() + CARD_WIDTH
-        )
-        self.scene().setSceneRect(
-            QRectF(0, 25, max(right + 130, 500), last.y() + CARD_HEIGHT + 130)
-        )
-        self.setSceneRect(self.scene().sceneRect())
         self.start_marker = StartPoint(self)
         self.start_marker.setPos(
             first
             + (
-                QPointF(CARD_WIDTH / 2, -65)
+                QPointF(CARD_WIDTH / 2, -80)
                 if self.layout_mode == "vertical"
                 else QPointF(-76, CARD_HEIGHT / 2)
             )
@@ -498,6 +543,23 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
         self.scene().blockSignals(False)
         self._rendering = False
         self.update_visible_nodes()
+
+    def update_scene_geometry(self):
+        last = self.node_position(max(0, len(self.blocks) - 1))
+        right = (
+            136 + (self.grid_columns - 1) * PITCH + CARD_WIDTH
+            if self.layout_mode == "grid"
+            else last.x() + CARD_WIDTH
+        )
+        self.scene().setSceneRect(
+            QRectF(
+                0,
+                25,
+                max(right + (35 if self.layout_mode == "grid" else 130), 380),
+                last.y() + CARD_HEIGHT + 130,
+            )
+        )
+        self.setSceneRect(self.scene().sceneRect())
 
     def visible_indices(self):
         count = len(self.blocks)
@@ -510,12 +572,17 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
         )
         if self.layout_mode == "grid":
             first = max(0, math.floor((rect.top() - 136) / 224))
-            last = min((count - 1) // 4, math.ceil((rect.bottom() - 136) / 224))
+            last = min((count - 1) // self.grid_columns, math.ceil((rect.bottom() - 136) / 224))
             columns = range(
                 max(0, math.floor((rect.left() - 136) / PITCH)),
-                min(3, math.ceil((rect.right() - 136) / PITCH)) + 1,
+                min(self.grid_columns - 1, math.ceil((rect.right() - 136) / PITCH)) + 1,
             )
-            return {r * 4 + c for r in range(first, last + 1) for c in columns if r * 4 + c < count}
+            return {
+                r * self.grid_columns + c
+                for r in range(first, last + 1)
+                for c in columns
+                if r * self.grid_columns + c < count
+            }
         start, end, pitch, origin = (
             (rect.top(), rect.bottom(), 214, 110)
             if self.layout_mode == "vertical"
@@ -570,6 +637,7 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
                     self.remove_scene_item(item)
             for boundary in boundaries - set(self.decorations):
                 self.decorations[boundary] = self.make_connector(boundary)
+            self.update_group_frames(wanted)
         finally:
             self.scene().blockSignals(False)
         self.apply_drag_positions()
@@ -596,7 +664,10 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
             b = next_pos + QPointF(0, CARD_HEIGHT / 2) if next_pos else a + QPointF(80, 0)
         path = QPainterPath(a)
         wrapping = (
-            self.layout_mode == "grid" and boundary and boundary % 4 == 0 and next_pos is not None
+            self.layout_mode == "grid"
+            and boundary
+            and boundary % self.grid_columns == 0
+            and next_pos is not None
         )
         if wrapping:
             a = previous + QPointF(CARD_WIDTH / 2, CARD_HEIGHT)
@@ -653,12 +724,12 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
         return QSizeF(CARD_WIDTH, CARD_HEIGHT)
 
     def follow_index(self, index):
-        if not self.follow_enabled or self.pointer_interaction or index == self.follow_target:
-            return
+        previous = self.follow_target
         self.follow_target = index
+        if not self.follow_enabled or self.pointer_interaction or index == previous:
+            return
         if not 0 <= index < len(self.blocks):
             return
-        self.camera.stop()
         current = self.mapToScene(self.viewport().rect().center())
         destination = self.node_position(index) + QPointF(CARD_WIDTH / 2, CARD_HEIGHT / 2)
         visible = self.mapToScene(self.viewport().rect()).boundingRect()
@@ -674,9 +745,7 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
                 else max(low + span / 2, min(high - span / 2, value))
             )
             getattr(destination, "set" + axis.upper())(clamped)
-        self.camera.setStartValue(current)
-        self.camera.setEndValue(destination)
-        self.camera.start()
+        self.camera.move_to(current, destination)
 
     def set_follow_enabled(self, enabled):
         self.follow_enabled = enabled
@@ -736,8 +805,58 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
             bounds = self.nodes[target].sceneBoundingRect()
         self.ensureVisible(bounds, 24, 24)
 
+    def desired_grid_columns(self):
+        width = self.viewport().width() / max(0.1, self.transform().m11())
+        return max(1, min(64, math.floor((width - 136 - 35 - CARD_WIDTH) / PITCH) + 1))
+
+    def queue_reflow(self):
+        self._reflow_pending = True
+        if not self._reflow_queued:
+            self._reflow_queued = True
+            QTimer.singleShot(0, self, self.reflow_grid)
+
+    def reflow_grid(self):
+        self._reflow_queued = False
+        if self.layout_mode != "grid":
+            self._reflow_pending = False
+            return
+        if self.pointer_interaction or self.drag_state is not None:
+            return
+        self._reflow_pending = False
+        if self.desired_grid_columns() == self.grid_columns:
+            return
+        if self.selected_indices:
+            anchor = min(self.selected_indices)
+        elif self.verticalScrollBar().value() <= self.verticalScrollBar().minimum() + 1:
+            anchor = 0
+        else:
+            center = self.mapToScene(self.viewport().rect().center())
+            row = max(0, round((center.y() - 136 - CARD_HEIGHT / 2) / 224))
+            column = max(
+                0, min(self.grid_columns - 1, round((center.x() - 136 - CARD_WIDTH / 2) / PITCH))
+            )
+            anchor = min(max(0, len(self.blocks) - 1), row * self.grid_columns + column)
+        self.camera.stop()
+        self.follow_target = None
+        self.grid_columns = self.desired_grid_columns()
+        self.update_scene_geometry()
+        for index, node in self.nodes.items():
+            node.setPos(self.node_position(index))
+        for items in self.decorations.values():
+            for item in items:
+                self.remove_scene_item(item)
+        self.decorations = {}
+        for item in self.group_items.values():
+            self.remove_scene_item(item)
+        self.group_items = {}
+        if not self.execution_trace or self.execution_trace["phase"] == "finished":
+            self.reveal_index(anchor)
+        else:
+            self.update_visible_nodes()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self.queue_reflow()
         self.queue_visible_nodes()
         if self.pan_origin is None:
             self.request_selection_visibility()
@@ -807,11 +926,20 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
         target = max(0.4, min(1.8, current * factor))
         self.camera.stop()
         self.scale(target / current, target / current)
+        self.queue_reflow()
         self.update_visible_nodes()
         self.zoomChanged.emit(round(target * 100))
 
     def fit(self):
         self.camera.stop()
+        if self.layout_mode == "grid":
+            self.resetTransform()
+            self.reflow_grid()
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().minimum())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().minimum())
+            self.update_visible_nodes()
+            self.zoomChanged.emit(100)
+            return
         bounds = self.sceneRect()
         scale = max(
             0.5,
@@ -868,6 +996,8 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
             self.pan_origin = None
             self.unsetCursor()
             self.pointer_interaction = False
+            if self._reflow_pending:
+                self.queue_reflow()
             if self.reveal_requested:
                 self.request_selection_visibility()
             event.accept()
@@ -875,6 +1005,8 @@ class Canvas(WorkflowDragMixin, QGraphicsView):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.LeftButton:
             self.pointer_interaction = False
+            if self._reflow_pending:
+                self.queue_reflow()
             if self.reveal_requested:
                 self.request_selection_visibility()
 
@@ -944,6 +1076,7 @@ class Workflow(QWidget):
             ("Paste", "paste"),
             ("Duplicate", "duplicate"),
             ("Re-record", "rerecord"),
+            ("Group", "group"),
             ("Delete", "delete"),
         ):
             btn = QPushButton(text)
@@ -1005,7 +1138,10 @@ class Workflow(QWidget):
         selected = len(self.canvas.selected_indices)
         self.selection_label.setText(f"{selected:,} selected")
         self.selection_bar.setVisible(selected > 0)
-        self.action_count.setText(f"{count:,} actions · Drag to select")
+        notes = self.canvas.note_count
+        self.action_count.setText(
+            f"{count - notes:,} actions" + (f" · {notes} notes" if notes else "")
+        )
 
     def apply_layout(self):
         self.canvas.layout_mode = self.layout_choice.currentData()

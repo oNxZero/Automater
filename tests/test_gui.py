@@ -8,6 +8,7 @@ from moonlight_studio.window import MainWindow
 
 def window(qtbot, tmp_path, monkeypatch):
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Discard)
+    monkeypatch.setattr("moonlight_studio.dialogs.SaveChangesDialog.ask", lambda *args: "discard")
     monkeypatch.setattr("moonlight_studio.window.devices", lambda: [])
     monkeypatch.setattr("moonlight_studio.window.x11.windows", lambda: [])
     win = MainWindow(config_dir=tmp_path, demo=True)

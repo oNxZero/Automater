@@ -1,5 +1,6 @@
 """Best-effort background delivery to one X11 client; never changes real focus."""
 
+import time
 from dataclasses import dataclass
 
 from Xlib import X, display, protocol
@@ -208,11 +209,40 @@ class BackgroundBackend:
 
 
 class FocusGuard:
-    """Use actual X input focus, including child widgets; no focus/activation requests."""
+    """Check actual X input focus; activation is requested explicitly before playback."""
 
     def __init__(self, target):
         self.target = target
         self.connection = display.Display()
+
+    def activate(self):
+        try:
+            self.check()
+            return
+        except RuntimeError:
+            pass
+        target = self.connection.create_resource_object("window", self.target.id)
+        if identity(self.connection, target) != (self.target.pid, self.target.wm_class):
+            raise RuntimeError("Selected window closed or its identity changed")
+        event = protocol.event.ClientMessage(
+            window=target,
+            client_type=self.connection.intern_atom("_NET_ACTIVE_WINDOW"),
+            data=(32, [1, X.CurrentTime, 0, 0, 0]),
+        )
+        self.connection.screen().root.send_event(
+            event, event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask
+        )
+        self.connection.flush()
+        deadline = time.monotonic() + 0.75
+        while time.monotonic() < deadline:
+            try:
+                self.check()
+                return
+            except RuntimeError:
+                time.sleep(0.01)
+        raise RuntimeError(
+            "The desktop could not activate this app. Focus it manually and try again."
+        )
 
     def check(self):
         target = self.connection.create_resource_object("window", self.target.id)

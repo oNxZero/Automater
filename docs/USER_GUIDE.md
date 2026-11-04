@@ -90,8 +90,10 @@ Other desktops currently expose X11/Xwayland windows only. Refresh after opening
 an app. A closed selected desktop window remains marked unavailable until you
 choose another window; it does not silently become unrestricted desktop playback.
 
-For **Active desktop**, selecting a window requires it to stay focused; switching
-away stops the script and releases held inputs. This still moves your normal
+For **Active desktop**, **Focus selected window on start** restores
+and focuses your chosen app after the countdown. Turn it off if you prefer to
+focus the app yourself. After starting, switching away stops the script and releases
+held inputs. This still moves your normal
 pointer. Use **Use any active window** in the picker to remove that focus check.
 **Existing window · X11** sends best-effort background messages. For a native
 Wayland window, the picker explicitly offers **Use on active desktop** instead.
@@ -134,10 +136,15 @@ only a mouse is selected, global keyboard shortcuts will not work.
 ## Save and recover
 
 **Save** saves to the current file, or asks for a destination on first
-save. The default is your library. **File → Save as** writes a separate copy. Library
-search filters by filename; double-click a result to open it. Import opens an
+save. The default is your library. **File → Save as** writes a separate copy. Library searches filenames and workflow titles; double-click a result to open it.
+It indexes known save locations and recently opened files, including older workflows
+saved beside the launcher. **Add folder…** includes another directory, and Refresh
+picks up files added outside Studio. Only valid workflow JSON appears; preferences
+and recovery files stay out of the list. Import opens an
 existing JSON script. Existing version-1 files remain readable. Advanced controls, timing ranges and
 starting points use version 2 when saved; they require Studio v0.4 or newer.
+Notes and named groups use version 3 and require v0.8 or newer. Existing files are
+not rewritten when Library indexes them.
 
 **Notes** stores starting position, camera direction, bindings and reminders.
 An unsaved-change badge appears in the header. Idle edits are autosaved every five
@@ -329,3 +336,60 @@ New recordings benefit from capture fixes; existing JSON timings are kept unchan
 Saved tab labels use the filename without `.json`. Open and Save As start in the
 active file's folder, otherwise the last used folder, otherwise the workflow library.
 The editable workflow title inside a JSON file remains independent of its filename.
+
+## Add explanations and visual categories
+
+Choose **Add action → Note / text…**, **Edit → Add workflow note**, or press
+**Ctrl+Shift+N**. Enter a title and plain text. Click the note later to edit it in
+the inspector, drag to move it, or copy/delete it like another card. Notes never
+emit keyboard/mouse input and never add time to playback. The canvas shows a short
+preview; the inspector retains the complete explanation (up to 4,000 characters).
+
+Select cards, then click **Group**, use **Ctrl+G**, or choose Group selection in the
+context menu. Name the category and choose its color. A border surrounds the
+selected actions; a group spanning grid rows repeats its heading on each row.
+Nonadjacent selections retain their order and get separate border segments,
+without enclosing the unselected actions between them. These are visual categories,
+not loops or executable branches.
+
+Click a group header to select every member. Right-click it to rename/change color
+or ungroup. **Ctrl+Shift+G** removes selected actions from their groups. Group changes
+and note edits are undoable; copy/paste between tabs copies the required metadata
+and creates independent group identities.
+
+## Live capture preview
+
+During recording, a preview above the editor shows the most recent actions, total
+captured events, elapsed time and currently held inputs. The original workflow stays
+intact until you finish. **F6** adds the captured events using the append/re-record
+mode you chose; **Discard** keeps the previous workflow. In-progress capture remains
+in memory, so finish the recording before closing Studio.
+
+![Live recording preview](recording-preview.png)
+
+## Manage tabs and unsaved changes
+
+Right-click a tab for Rename, Save, Save as, Close workflow and Close other workflows.
+Double-click a tab to rename it. Renaming a saved workflow moves its JSON file within
+the same folder, refuses an existing destination, and keeps unsaved edits in memory.
+The updated internal workflow title is persisted when you Save. Closing a tab does
+not delete its saved JSON file.
+
+The unsaved badge sits beside the summary below the workflow title. Closing changed
+work opens Studio's save dialog: **Save workflow** writes your changes, **Discard
+changes** keeps the last saved file, and **Keep editing** or Escape cancels closing.
+Cancelling the file chooser during Save also leaves the tab open.
+
+![Save, discard or keep editing](save-changes.png)
+
+## Wide screens and smooth following
+
+Grid columns follow the visible width, current zoom and properties panel. The
+layout reflows after a pointer gesture finishes, keeping dragging and box selection
+stable while properties open. Selection and raw input data do not change.
+
+Playback uses a continuously updated camera with retained velocity when targets
+change. It stays separate from replay timing. Turn **Follow playback** off to pan
+freely, then turn it on to return to the current action. Shorter-than-frame inputs
+are represented by the latest worker snapshot; the UI cannot display every physical
+event as a separate rendered frame.

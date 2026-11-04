@@ -1,10 +1,11 @@
-"""Read-only KDE window discovery; no focus changes or persistent KWin settings."""
+"""KDE window discovery and explicit playback activation; no persistent KWin settings."""
 
 import asyncio
 import json
 import os
 import tempfile
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,16 @@ snapshot();
 """.replace("SERVICE", json.dumps(service))
 
 
+def activation_script(target):
+    return f"""
+const w = workspace.windowList().find(w => String(w.internalId) === {json.dumps(target.id)} && w.pid === {target.pid} && String(w.resourceClass) === {json.dumps(target.wm_class[0])});
+if (!w) throw new Error("Selected window closed");
+w.minimized = false;
+if (w.desktops && w.desktops.length) workspace.currentDesktop = w.desktops[0];
+workspace.activeWindow = w;
+"""
+
+
 class WindowObserver(QObject):
     changed = Signal()
 
@@ -61,6 +72,7 @@ class WindowObserver(QObject):
         self.available = False
         self.error = ""
         self.thread = self.loop = self.stop_event = None
+        self._call = None
         self.closing = threading.Event()
 
     def emit_changed(self):
@@ -85,6 +97,62 @@ class WindowObserver(QObject):
             raise RuntimeError(
                 "Selected window lost focus. Focus it during the countdown and keep it active."
             )
+
+    def activate(self, target):
+        windows, active, available, _ = self.snapshot()
+        if not available or self.loop is None or self._call is None:
+            raise RuntimeError(
+                "Window tracking is unavailable. Refresh the window picker, or choose Any active window for desktop playback."
+            )
+        if not any(
+            (w.id, w.pid, w.wm_class) == (target.id, target.pid, target.wm_class) for w in windows
+        ):
+            raise RuntimeError("The selected window closed. Choose an open window again.")
+        if active == target.id:
+            return
+        future = asyncio.run_coroutine_threadsafe(self._activate(target), self.loop)
+        try:
+            future.result(timeout=2)
+        except TimeoutError as exc:
+            future.cancel()
+            raise RuntimeError(
+                "The desktop could not activate this app. Focus it manually and try again."
+            ) from exc
+        except Exception as exc:
+            future.cancel()
+            raise RuntimeError(
+                str(exc) or "Window activation was cancelled or disconnected."
+            ) from exc
+
+    async def _activate(self, target):
+        name = "moonlight_activate_" + uuid.uuid4().hex
+        path, loaded = None, False
+        script = activation_script(target)
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".js", prefix="moonlight-activate-", delete=False
+            ) as file:
+                path = Path(file.name)
+                file.write(script)
+            script_id = (
+                await self._call("/Scripting", SCRIPTING, "loadScript", "ss", [str(path), name])
+            )[0]
+            if script_id < 0:
+                raise RuntimeError("The desktop refused to activate the selected window")
+            loaded = True
+            await self._call(f"/Scripting/Script{script_id}", "org.kde.kwin.Script", "run")
+            deadline = time.monotonic() + 0.75
+            while self.snapshot()[1] != target.id and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
+            self.check_focus(target)
+        finally:
+            if loaded:
+                try:
+                    await self._call("/Scripting", SCRIPTING, "unloadScript", "s", [name])
+                except Exception:
+                    pass
+            if path:
+                path.unlink(missing_ok=True)
 
     def start(self):
         if self.thread and self.thread.is_alive():
@@ -125,6 +193,7 @@ class WindowObserver(QObject):
                     raise RuntimeError(str(reply.body[0]) if reply.body else reply.error_name)
                 return reply.body
 
+            self._call = call
             owner = (
                 await call(
                     "/org/freedesktop/DBus",
@@ -256,13 +325,18 @@ def matching_x11(window, x11_windows):
 class GuardedDesktopBackend:
     """Focus checks do not block cleanup releases when the destination changes."""
 
-    def __init__(self, backend, check_focus, close_guard=lambda: None):
+    def __init__(self, backend, check_focus, close_guard=lambda: None, activate_window=None):
         self.backend = backend
         self.check_focus = check_focus
         self.close_guard = close_guard
+        self.activate_window = activate_window
 
     def __getattr__(self, name):
         return getattr(self.backend, name)
+
+    def activate(self):
+        if self.activate_window is not None:
+            self.activate_window()
 
     def check(self):
         self.check_focus()
@@ -284,15 +358,21 @@ class GuardedDesktopBackend:
             self.close_guard()
 
 
-def guarded_desktop(factory, target, observer):
+def guarded_desktop(factory, target, observer, auto_activate=True):
     from .x11 import FocusGuard
 
     backend = factory()
     try:
         if isinstance(target, DesktopWindow):
-            return GuardedDesktopBackend(backend, lambda: observer.check_focus(target))
+            return GuardedDesktopBackend(
+                backend,
+                lambda: observer.check_focus(target),
+                activate_window=(lambda: observer.activate(target)) if auto_activate else None,
+            )
         guard = FocusGuard(target)
-        return GuardedDesktopBackend(backend, guard.check, guard.close)
+        return GuardedDesktopBackend(
+            backend, guard.check, guard.close, guard.activate if auto_activate else None
+        )
     except Exception:
         backend.close()
         raise

@@ -39,10 +39,10 @@ def test_tabs_preserve_independent_edits_undo_and_run_settings(qtbot, tmp_path, 
 def test_close_cancel_and_last_tab_leave_a_usable_document(qtbot, tmp_path, monkeypatch):
     win = window(qtbot, tmp_path, monkeypatch)
     win.add_step(2)
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Cancel)
+    monkeypatch.setattr("moonlight_studio.dialogs.SaveChangesDialog.ask", lambda *args: "cancel")
     win.close_document(0)
     assert win.document_tabs.count() == 1 and win.dirty()
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Discard)
+    monkeypatch.setattr("moonlight_studio.dialogs.SaveChangesDialog.ask", lambda *args: "discard")
     win.close_document(0)
     assert win.document_tabs.count() == 1 and not win.model.steps and not win.dirty()
     clean(win)

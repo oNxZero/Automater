@@ -1,11 +1,11 @@
-# Verification of v0.7
+# Verification of v0.8
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
 Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **217 automated tests passed**, including offscreen Qt workflows and five live X11
+- **239 automated tests passed**, including offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Reproduced a Qt/PySide6 6.12.0 reference-count crash during repeated painting on
@@ -179,3 +179,33 @@ into /tmp for testing only; no system packages or input permissions were changed
 - Actual keyboard/mouse acceptance in the user's game remains unverified: this
   sandbox has no physical input/uinput devices. Relative counts do not guarantee
   pixel-identical paths or camera movement, and existing recordings are not rewritten.
+
+
+## v0.8 verification
+
+- Added regression coverage for version-3 notes/groups, invalid metadata, zero-delay
+  visual-only notes, input-only replay counts, atomic group edit/remove/Undo,
+  cross-document clipboard identities, note editing and actual group-header clicks.
+- Responsive-layout tests resize a 348-action grid from 1000 to 3440 pixels, toggle
+  the inspector and change zoom without changing events. Camera tests verify
+  continuous velocity when retargeted, intermediate positions and the follow toggle.
+- Library tests discover valid workflow JSON outside the internal folder, exclude
+  unrelated configuration JSON, search filename/title and persist added folders.
+  A read-only scan also found all three existing user workflows beside the launcher.
+- File tests rename without overwriting another file or saving unrelated edits.
+  Save-dialog tests exercise save/discard/cancel and cancelled-save preservation.
+  Live-preview tests verify captured events appear before committing and Discard
+  leaves the prior workflow intact.
+- Window activation is tested through the private D-Bus fixture, including temporary
+  script load/run/unload and observed focus updates. The generated JavaScript is
+  evaluated against an owned workspace fixture with quoted identities; wrong PIDs
+  cannot select another window. GUI replay verifies activation precedes input.
+  These tests never activate a real user window or inject real desktop input.
+- Actual Qt screenshots were inspected at 1240×800 and 3440×1440; the wide grid used
+  12 columns. A local offscreen camera check produced 261 updates over roughly two
+  seconds: median interval 7.89 ms, 95th percentile 8.64 ms, and 4,464 scene pixels
+  travelled. This measures the local Qt camera, not a guaranteed physical display
+  refresh rate or real-game input acceptance.
+- Foreground activation still uses the normal desktop pointer/keyboard. Independent
+  background input remains X11 best effort or a separate game session. Physical
+  compositor/game acceptance is still a manual check.

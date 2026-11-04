@@ -46,7 +46,7 @@ def test_picker_explains_native_window_uses_active_desktop(qtbot, tmp_path, monk
     qtbot.addWidget(picker)
     picker.set_windows([native])
     assert picker.use.text() == "Use on active desktop"
-    assert "Keep it focused" in picker.hint.text()
+    assert "bring it forward" in picker.hint.text()
     picker.search.setText("no such window")
     assert not picker.use.isEnabled()
     clean(win)
@@ -151,9 +151,16 @@ def test_kde_discovery_and_focus_updates_over_private_bus(qtbot, portal_server):
             from pathlib import Path
 
             script = Path(message.body[0]).read_text()
-            server.callback = json.loads(re.search(r'callDBus\(("[^"]+")', script).group(1))
-            server.bus.send(Message.new_method_return(message, "i", [1]))
+            if message.body[1].startswith("moonlight_activate_"):
+                server.activation_script = script
+                script_id = 2
+            else:
+                server.callback = json.loads(re.search(r'callDBus\(("[^"]+")', script).group(1))
+                script_id = 1
+            server.bus.send(Message.new_method_return(message, "i", [script_id]))
         elif message.member == "run":
+            if message.path.endswith("Script2"):
+                state["active"] = "native"
             server.bus.send(Message.new_method_return(message))
             server.loop.create_task(publish())
         elif message.member == "unloadScript":
@@ -177,6 +184,9 @@ def test_kde_discovery_and_focus_updates_over_private_bus(qtbot, portal_server):
 
         with pytest.raises(RuntimeError, match="lost focus"):
             observer.check_focus(target)
+        observer.activate(target)
+        observer.check_focus(target)
+        assert "w.pid === 123" in server.activation_script
         state["windows"] = []
         asyncio.run_coroutine_threadsafe(publish(), server.loop).result(2)
         with pytest.raises(RuntimeError, match="closed"):
@@ -185,7 +195,7 @@ def test_kde_discovery_and_focus_updates_over_private_bus(qtbot, portal_server):
         observer.close()
         observer.thread.join(4)
     assert not observer.thread.is_alive()
-    assert calls == ["loadScript", "run", "unloadScript"]
+    assert calls == ["loadScript", "run", "loadScript", "run", "unloadScript", "unloadScript"]
     assert not observer.snapshot()[2]
 
 
@@ -214,6 +224,7 @@ def test_selected_desktop_window_requires_focus_before_any_input(qtbot, tmp_path
     with win.window_observer.lock:
         win.window_observer.active_id = "another-window"
     backend = Backend()
+    win.activate_target.setChecked(False)
 
     def factory():
         return backend

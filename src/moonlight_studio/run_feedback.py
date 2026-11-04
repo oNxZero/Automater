@@ -7,6 +7,8 @@ from PySide6.QtWidgets import QMessageBox
 
 
 def block_state(block, trace):
+    if block.kind == "note":
+        return ""
     final = trace["phase"] == "finished"
     completed = trace["completed_row"]
     failed = trace["failed_row"]
@@ -95,6 +97,7 @@ class RunFeedbackMixin:
         self.pause_btn.setText("Resume · F8" if phase == "paused" else "Pause · F8")
         labels = {
             "preparing": "Preparing destination",
+            "activating": "Bringing the selected window forward",
             "countdown": f"Starting in {remaining:.1f}s",
             "positioning": "Resetting game cursor",
             "settling": f"Cursor settling · {remaining:.2f}s",

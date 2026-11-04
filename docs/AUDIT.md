@@ -41,7 +41,7 @@ evidence, not a claim that every bug has been found.
 - Global hotkeys require a selected readable keyboard. Local fallback works when
   Studio is focused. Re-recording nonadjacent spans is rejected to keep one clear
   replacement position.
-- Configurable hotkeys, named groups, run presets and a real-device compatibility
+- Configurable hotkeys and run presets and a real-device compatibility
   report remain useful follow-ups before broader Linux/game reliability claims.
 
 
@@ -85,3 +85,21 @@ evidence, not a claim that every bug has been found.
 
 Physical-game accuracy and native Wayland discovery outside KDE still require
 platform-specific work. No claim is made that every real game accepts every input.
+
+
+## v0.8 usability findings
+
+| Finding | Change / verification |
+| --- | --- |
+| Grid stayed four columns wide on large monitors | Derive columns from viewport width and zoom; reflow on resize/inspector changes and defer it during active pointer gestures. A 3440×1440 check used 12 columns. |
+| Fast actions restarted the camera's easing curve | Use a critically damped camera retaining position and velocity on retarget; keep a precise timer and viewport-local graphics updates. |
+| Library missed JSON files saved outside its internal folder | Index known save folders, recent files and the launcher directory; Add folder includes other locations. Ignore invalid/configuration JSON and scan off the UI thread. |
+| Tabs lacked file/document controls | Right-click rename/save/save as/close/close others, plus double-click rename. Refuse destination collisions and preserve unsaved edits. |
+| Recording gave no indication of captured content | Bounded live preview of recent actions, total count, elapsed time and held inputs; only finish commits events. |
+| Explanations and categories were missing | Plain-text note cards and named colored group frames, with persistence, Undo and cross-tab clipboard metadata. Notes are excluded from replay. |
+| Save prompt and unsaved badge did not match the workspace | Custom save dialog with explicit choices and safe cancellation; badge beside the title summary, with long summaries elided instead of wrapping. |
+| Selected foreground apps stopped immediately when unfocused | Restore/focus the chosen window after countdown, before input, with an opt-out. Identity/focus checks and cleanup remain active. Background input still requires a supported background route. |
+| Empty properties retained a stale action caption | Clear the caption and close action properties on explicit deselection. |
+
+Real game acceptance and compositor-specific activation policy still require a
+physical desktop check. No real user window was activated by automated tests.

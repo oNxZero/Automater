@@ -28,8 +28,9 @@ from PySide6.QtWidgets import (
 
 from .editor import EventTable, StepDelegate
 from .inspector import ActionInspector
+from .live_preview import RecordingPreview
 from .theme import ACCENT, icon
-from .widgets import WorkflowTabBar, button, label
+from .widgets import ElidedLabel, WindowTargetButton, WorkflowTabBar, button, label
 from .workflow import Workflow
 
 
@@ -114,6 +115,9 @@ def build_ui(w):
         ("Duplicate\tCtrl+D", "duplicate"),
         ("Select all\tCtrl+A", "select_all"),
         ("Delete\tDelete", "delete"),
+        ("Add workflow note…\tCtrl+Shift+N", "note"),
+        ("Group selection…\tCtrl+G", "group"),
+        ("Ungroup selection\tCtrl+Shift+G", "ungroup"),
         ("Randomize selected timing…", "randomize"),
         ("Re-record selected actions…", "rerecord"),
         ("Show pointer path…", "preview_pointer"),
@@ -141,6 +145,9 @@ def build_ui(w):
     w.document_tabs.setElideMode(Qt.ElideRight)
     w.document_tabs.setUsesScrollButtons(True)
     w.document_tabs.setAccessibleName("Open workflows")
+    w.document_tabs.setContextMenuPolicy(Qt.CustomContextMenu)
+    w.document_tabs.customContextMenuRequested.connect(w.document_menu)
+    w.document_tabs.tabBarDoubleClicked.connect(w.rename_document)
     w.document_tabs.currentChanged.connect(w.activate_document)
     w.document_tabs.tabCloseRequested.connect(w.close_document)
     tabs.addWidget(w.document_tabs, 1)
@@ -159,10 +166,17 @@ def build_ui(w):
     w.name.setPlaceholderText("Name your workflow")
     name_row.addWidget(w.name, 1)
     w.saved_badge = label("Unsaved", "muted")
-    name_row.addWidget(w.saved_badge)
+    w.saved_badge.setObjectName("saveState")
+    w.saved_badge.setWordWrap(False)
     titles.addLayout(name_row)
-    w.stats = label("")
-    titles.addWidget(w.stats)
+    w.stats = ElidedLabel()
+    w.stats.setObjectName("muted")
+    details = QHBoxLayout()
+    details.setSpacing(10)
+    details.addWidget(w.stats)
+    details.addWidget(w.saved_badge)
+    details.addStretch()
+    titles.addLayout(details)
     w.title_row.addLayout(titles, 1)
     w.settings_btn = button("Settings", lambda: w.show_inspector(1), "ghost", glyph="settings")
     body.addWidget(w.workspace_header)
@@ -202,6 +216,8 @@ def build_ui(w):
     workspace_layout.setContentsMargins(0, 0, 0, 0)
     workspace_layout.setSpacing(12)
     workspace_layout.addWidget(w.workflow_tabs)
+    w.record_preview = RecordingPreview()
+    workspace_layout.addWidget(w.record_preview)
     toolbar = w.title_row
     w.undo_btn = button("", w.undo.undo, "ghost", "Undo · Ctrl+Z", "undo")
     w.redo_btn = button("", w.undo.redo, "ghost", "Redo · Ctrl+Shift+Z", "redo")
@@ -228,6 +244,7 @@ def build_ui(w):
     w.workflow.canvas.insertRequested.connect(w.choose_action)
     w.workflow.canvas.reorderRequested.connect(w.reorder_blocks)
     w.workflow.canvas.command.connect(w.workflow_command)
+    w.workflow.canvas.groupRequested.connect(w.handle_group_command)
     w.workflow.layout_choice.currentIndexChanged.connect(w.save_preferences)
     w.editor_stack.addWidget(w.workflow)
     events = QWidget()
@@ -272,13 +289,13 @@ def build_ui(w):
     emblem.setAlignment(Qt.AlignCenter)
     emblem.setPixmap(icon("flow", ACCENT, 58).pixmap(58, 58))
     welcome.addWidget(emblem)
-    heading = label("Create your first workflow", "title")
+    heading = w.welcome_heading = label("Create your first workflow", "title")
     heading.setAlignment(Qt.AlignCenter)
     welcome.addWidget(heading)
-    description = label("Click Record below, or Add action above.")
+    description = w.welcome_description = label("Click Record below, or Add action above.")
     description.setAlignment(Qt.AlignCenter)
     welcome.addWidget(description)
-    example = button("Try an example", w.load_example, "ghost")
+    example = w.welcome_example = button("Try an example", w.load_example, "ghost")
     welcome.addWidget(example, 0, Qt.AlignCenter)
     welcome.addStretch()
     w.editor_stack.addWidget(w.welcome)
@@ -386,8 +403,10 @@ def build_run_settings(w):
     layout.addWidget(label("Preview without sending any input."))
     layout.addWidget(label("Destination"))
     w.mode = QComboBox()
+    w.mode.setMinimumContentsLength(12)
+    w.mode.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
     w.mode.addItems(
-        ["Active desktop", "Existing window · X11", "Separate game session · Gamescope"]
+        ["Active desktop", "Background window · X11", "Separate game session · Gamescope"]
     )
     w.mode.currentIndexChanged.connect(w.routing_changed)
     layout.addWidget(w.mode)
@@ -397,8 +416,14 @@ def build_run_settings(w):
     w.target.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
     w.target.currentIndexChanged.connect(w.update_run_summary)
     layout.addWidget(w.target)
-    w.refresh_target_btn = button("Choose open window…", w.choose_open_window, glyph="target")
+    w.refresh_target_btn = WindowTargetButton(w.choose_open_window)
     layout.addWidget(w.refresh_target_btn)
+    w.activate_target = QCheckBox("Focus selected window on start")
+    w.activate_target.setChecked(True)
+    w.activate_target.setToolTip(
+        "After the countdown, restore and focus your chosen desktop window. This uses your normal mouse and keyboard."
+    )
+    layout.addWidget(w.activate_target)
     w.routing_hint = label("")
     layout.addWidget(w.routing_hint)
     w.session_controls = QWidget()
@@ -554,6 +579,7 @@ def build_library(w):
     actions = QHBoxLayout()
     actions.addWidget(button("New workflow", w.new_script, "primary", glyph="plus"))
     actions.addWidget(button("Import JSON", w.open_script, glyph="open"))
+    actions.addWidget(button("Add folder…", w.add_library_folder, glyph="library"))
     actions.addStretch()
     actions.addWidget(button("Refresh", w.refresh_library, "ghost", glyph="refresh"))
     top.addLayout(actions)

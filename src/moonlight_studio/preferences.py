@@ -1,7 +1,7 @@
 """Local settings, separate from portable macro files."""
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .engine import PlaybackOptions
@@ -20,11 +20,14 @@ class Preferences:
     capture_motion: bool = True
     append_recording: bool = True
     test_mode: bool = False
+    activate_target: bool = True
     layout: str = "horizontal"
     start_x: int = 0
     start_y: int = 0
     start_settle_ms: float = 150
     script_directory: str | None = None
+    recent_scripts: list[str] = field(default_factory=list)
+    library_folders: list[str] = field(default_factory=list)
 
     def validate(self):
         from .models import number
@@ -38,6 +41,20 @@ class Preferences:
         ):
             raise ValueError("Invalid script folder")
 
+        for name, limit in (("recent_scripts", 128), ("library_folders", 64)):
+            paths = getattr(self, name)
+            if (
+                not isinstance(paths, list)
+                or len(paths) > limit
+                or any(
+                    not isinstance(p, str)
+                    or len(p) > 4096
+                    or "\x00" in p
+                    or not Path(p).is_absolute()
+                    for p in paths
+                )
+            ):
+                raise ValueError("Invalid workflow library paths")
         number(self.start_settle_ms, "Cursor settle delay", 0, 10_000)
         PlaybackOptions(
             self.speed,
@@ -55,15 +72,16 @@ class Preferences:
             raise ValueError("Invalid workflow layout")
         if type(self.countdown) is not int:
             raise ValueError("Start delay must be a whole number")
-        for field in (
+        for setting in (
             "capture_keys",
             "capture_buttons",
             "capture_motion",
             "append_recording",
             "test_mode",
+            "activate_target",
         ):
-            if type(getattr(self, field)) is not bool:
-                raise ValueError(f"Invalid {field} setting")
+            if type(getattr(self, setting)) is not bool:
+                raise ValueError(f"Invalid {setting} setting")
         if self.device_ids is not None and (
             not isinstance(self.device_ids, list)
             or len(self.device_ids) > 1000

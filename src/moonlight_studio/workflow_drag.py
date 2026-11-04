@@ -33,8 +33,8 @@ class WorkflowDragMixin:
         if self.layout_mode == "vertical":
             target = round((destination.y() - 110) / 214)
         elif self.layout_mode == "grid":
-            target = max(0, round((destination.y() - 136) / 224)) * 4 + max(
-                0, min(3, round((destination.x() - 136) / PITCH))
+            target = max(0, round((destination.y() - 136) / 224)) * self.grid_columns + max(
+                0, min(self.grid_columns - 1, round((destination.x() - 136) / PITCH))
             )
         else:
             target = round((destination.x() - 136) / PITCH)

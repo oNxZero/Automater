@@ -244,6 +244,13 @@ class Recorder:
             self.held.clear()
             return list(self.steps)
 
+    def preview(self):
+        with self._lock:
+            recent = list(self.steps[-80:])
+            if self._pending is not None:
+                recent.append(self._pending[0])
+            return len(self.steps) + (1 if self._pending else 0), recent, sorted(self.held)
+
     def count(self):
         with self._lock:
             return len(self.steps) + (1 if self._pending is not None else 0)

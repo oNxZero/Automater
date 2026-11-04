@@ -1,7 +1,62 @@
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtWidgets import QLabel, QPushButton, QTabBar
+from PySide6.QtWidgets import QLabel, QPushButton, QSizePolicy, QTabBar
 
 from .theme import icon
+
+
+class ElidedLabel(QLabel):
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self.full_text = text
+        self.setWordWrap(False)
+        self.setTextFormat(Qt.PlainText)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.setMinimumWidth(80)
+        self.setText(text)
+
+    def setText(self, text):
+        self.full_text = text
+        self.setToolTip(text)
+        super().setText(self.fontMetrics().elidedText(text, Qt.ElideRight, max(80, self.width())))
+
+    def sizeHint(self):
+        return QSize(
+            min(420, self.fontMetrics().horizontalAdvance(self.full_text) + 10),
+            self.fontMetrics().height() + 4,
+        )
+
+    def minimumSizeHint(self):
+        return QSize(80, self.fontMetrics().height() + 4)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.setText(self.full_text)
+
+
+class WindowTargetButton(QPushButton):
+    def __init__(self, callback):
+        super().__init__()
+        self.caption = "Choose open window…"
+        self.setIcon(icon("target"))
+        self.setIconSize(QSize(20, 20))
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.setMinimumHeight(36)
+        self.setAccessibleName("Choose an open application window")
+        self.clicked.connect(callback)
+        self.set_caption(self.caption)
+
+    def set_caption(self, caption):
+        self.caption = caption
+        self.setToolTip(caption)
+        self.setText(
+            self.fontMetrics()
+            .elidedText(caption, Qt.ElideRight, max(20, self.width() - 58))
+            .replace("&", "&&")
+        )
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.set_caption(self.caption)
 
 
 class WorkflowTabBar(QTabBar):

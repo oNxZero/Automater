@@ -261,3 +261,33 @@ key/button transition intervals, including pause restoration. File dialog folder
 are consistent and persisted; tab labels come from saved filenames.
 
 - [KDE KWin scripting API](https://develop.kde.org/docs/plasma/kwin/api/)
+
+
+## v0.8: responsive, documented workflows
+
+Implemented a viewport-responsive grid and a critically damped camera with continuous
+velocity across target changes. Grid reflow is deferred during pointer gestures;
+virtualization remains independent of total action count. The live recording strip
+uses a bounded recorder snapshot and does not mutate the editable workflow.
+
+Library discovery indexes known folders/recent paths on a background thread, coalesces
+refresh requests, validates JSON and supports explicit added folders. Tab context
+menus, collision-safe file rename and a custom save/discard/cancel dialog complete
+the document flow. Unsaved status is adjacent to the workflow summary.
+
+Schema version 3 adds visual note steps and group definitions. Event group identities
+travel with source events, so reordering/editing retains membership. The undo command
+snapshots group definitions with events; cross-document clipboard copies receive fresh
+identities. Note steps are skipped by replay and contribute no delay. Versions 1 and
+2 remain readable and retain their serialized form when annotations are unused.
+
+Desktop window activation is explicit and enabled by default before playback: KDE
+uses a temporary identity-checked KWin script, and X11 requests activation through
+EWMH. Activation happens after the countdown, before any input, and failure stops
+playback with an error. Background routes retain their separate capabilities; this
+does not make foreground desktop input independent of the user's pointer.
+
+Validation includes responsive layouts at 1000–3440 pixels, continuous-camera
+retargeting, live capture preview, saved-file discovery, tab rename/cancel behavior,
+annotation schema validation, grouped clipboard/undo, and activation over a private
+D-Bus server plus JavaScript evaluation against an owned workspace fixture.

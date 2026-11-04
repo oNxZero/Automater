@@ -24,12 +24,15 @@ from PySide6.QtWidgets import (
 )
 
 from . import storage, x11
+from .annotations import AnnotationsMixin
 from .designer import build_ui
+from .dialogs import SaveChangesDialog
 from .documents import DocumentsMixin
 from .editing import EditingMixin
 from .editor import StepModel, editing_command
 from .engine import DryRun, PlaybackOptions, Replay
 from .isolated import GameSession, IsolatedBackend
+from .library import LibraryMixin
 from .linux_input import DeviceMonitor, Recorder, UInputBackend, devices, diagnostics
 from .models import KEY_CODES, MAX_STEPS, Script, Step
 from .open_windows import WindowObserver, discover_windows, guarded_desktop, matching_x11
@@ -48,6 +51,7 @@ class Bridge(QObject):
     position_picked = Signal(int, object, str)
     session_ready = Signal(int, str)
     session_windows = Signal(int, object, str)
+    library_ready = Signal(int, object)
 
 
 def sample():
@@ -65,12 +69,26 @@ def sample():
 
 
 class MainWindow(
-    DocumentsMixin, RunFeedbackMixin, SessionMixin, VisualsMixin, EditingMixin, QMainWindow
+    DocumentsMixin,
+    AnnotationsMixin,
+    LibraryMixin,
+    RunFeedbackMixin,
+    SessionMixin,
+    VisualsMixin,
+    EditingMixin,
+    QMainWindow,
 ):
     def __init__(self, config_dir=None, demo=False):
         super().__init__()
         self.config_dir = Path(config_dir) if config_dir else storage.data_dir()
         self.library_dir = self.config_dir / "scripts"
+        self.demo = demo
+        self.library_entries = {}
+        self.library_generation = 0
+        self.library_scan_pending = False
+        self.library_scan_requested = False
+        self.library_shutdown = False
+        self.library_stop = threading.Event()
         self.recovery_path = self.config_dir / "recovery.json"
         self.preferences_path = self.config_dir / "preferences.json"
         self.initializing = True
@@ -88,6 +106,8 @@ class MainWindow(
         self.loading = False
         self.busy = False
         self.record_pending = False
+        self.record_started = time.monotonic()
+        self.preview_updated_at = 0
         self.record_replace_rows = None
         self.playback_deadline = None
         self.playback_started = False
@@ -117,6 +137,7 @@ class MainWindow(
         self.bridge.hotkey.connect(self.route_hotkey)
         self.bridge.monitor_error.connect(self.route_monitor_error)
         self.bridge.position_picked.connect(self.position_picked)
+        self.bridge.library_ready.connect(self.library_scanned)
         self.bridge.session_ready.connect(self.session_started)
         self.bridge.session_windows.connect(self.session_windows_ready)
         self.undo = QUndoGroup(self)
@@ -240,6 +261,7 @@ class MainWindow(
             (self.capture_motion, prefs.capture_motion),
             (self.append_recording, prefs.append_recording),
             (self.test_mode, prefs.test_mode),
+            (self.activate_target, prefs.activate_target),
         ):
             widget.setChecked(value)
             widget.toggled.connect(self.save_preferences)
@@ -273,6 +295,7 @@ class MainWindow(
             self.append_recording.isChecked(),
             self.test_mode.isChecked(),
         )
+        prefs.activate_target = self.activate_target.isChecked()
         self.update_run_summary()
         try:
             prefs.save(self.preferences_path)
@@ -289,6 +312,7 @@ class MainWindow(
         for key, callback in (
             ("Ctrl+N", self.new_script),
             ("Ctrl+T", self.new_script),
+            ("Ctrl+Shift+N", self.compose_note),
             ("Ctrl+W", lambda: self.close_document(self.document_tabs.currentIndex())),
             (
                 "Ctrl+Tab",
@@ -322,6 +346,7 @@ class MainWindow(
             self.notes.toPlainText(),
             list(self.model.steps),
             self.script_version,
+            groups={key: dict(value) for key, value in self.model.groups.items()},
         )
         if self.start_enabled.isChecked():
             script.start = {
@@ -343,20 +368,24 @@ class MainWindow(
             return
         self.update_stats()
         title = self.name.text().strip() or "Untitled script"
-        self.setWindowTitle(f"{'● ' if self.dirty() else ''}{title} — Moonlight Studio")
-        self.saved_badge.setText("Unsaved" if self.dirty() else "")
-        self.update_document_title()
+        is_dirty = self.dirty()
+        self.setWindowTitle(f"{'● ' if is_dirty else ''}{title} — Moonlight Studio")
+        self.saved_badge.setText("Unsaved changes")
+        self.saved_badge.setVisible(is_dirty)
+        self.update_document_title(is_dirty)
         self.update_run_summary()
 
     def update_stats(self):
-        duration = sum(s.delay_ms for s in self.model.steps if s.enabled) / 1000
-        maximum = sum(s.maximum_ms for s in self.model.steps if s.enabled) / 1000
-        self.stats.setText(
-            f"{len(self.blocks):,} actions · {duration:.2f}"
-            + (f"–{maximum:.2f} s" if maximum != duration else " s")
-            if self.model.steps
-            else ""
-        )
+        duration = sum(s.delay_ms for s in self.model.steps if s.runnable) / 1000
+        maximum = sum(s.maximum_ms for s in self.model.steps if s.runnable) / 1000
+        notes = sum(block.kind == "note" for block in self.blocks)
+        pieces = [f"{len(self.blocks) - notes:,} actions"]
+        if notes:
+            pieces.append(f"{notes} note{'s' if notes != 1 else ''}")
+        if self.model.groups:
+            pieces.append(f"{len(self.model.groups)} groups")
+        pieces.append(f"{duration:.2f}" + (f"–{maximum:.2f} s" if maximum != duration else " s"))
+        self.stats.setText(" · ".join(pieces) if self.model.steps else "")
 
     def navigate(self, page, view=0):
         if self.busy and page != 0:
@@ -397,9 +426,7 @@ class MainWindow(
             summary = "Desktop: " + target.title
         if hasattr(self, "refresh_target_btn"):
             title = target.title if target is not None else "Choose open window…"
-            self.refresh_target_btn.setText(
-                self.refresh_target_btn.fontMetrics().elidedText(title, Qt.ElideRight, 240)
-            )
+            self.refresh_target_btn.set_caption(title)
             self.refresh_target_btn.setToolTip(title)
         if self.start_enabled.isChecked():
             summary += f" · Start {self.start_x.value()}, {self.start_y.value()}"
@@ -581,20 +608,6 @@ class MainWindow(
         else:
             self.playback_deadline = None
 
-    def filter_library(self):
-        query = self.library_search.text().strip().lower()
-        visible = 0
-        for i in range(self.library.count()):
-            item = self.library.item(i)
-            item.setHidden(query not in item.text().lower())
-            visible += not item.isHidden()
-        self.library_empty.setVisible(visible == 0)
-        self.library_empty.setText(
-            f"No workflows match “{self.library_search.text()}”."
-            if query
-            else "No saved workflows yet. Use Save workflow to add your first one."
-        )
-
     def load_script_view(self, script, path=None):
         self.loading = True
         self.path = Path(path) if path else None
@@ -611,7 +624,7 @@ class MainWindow(
         self.selection_anchor = 0 if script.steps else -1
         self.name.setText(script.name)
         self.notes.setPlainText(script.notes)
-        self.model.replace(script.steps)
+        self.model.replace(script.steps, script.groups)
         self.saved_snapshot = script.to_dict()
         self.loading = False
         self.edited()
@@ -623,15 +636,12 @@ class MainWindow(
             return False
         if not self.dirty():
             return True
-        result = QMessageBox.question(
-            self,
-            "Unsaved changes",
-            "Save changes before continuing?",
-            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+        result = SaveChangesDialog.ask(
+            self, self.path.stem if self.path else self.name.text(), self.path, len(self.blocks)
         )
-        if result == QMessageBox.Save:
+        if result == "save":
             return self.save_script()
-        if result == QMessageBox.Discard:
+        if result == "discard":
             self.clear_recovery()
             return True
         return False
@@ -684,6 +694,8 @@ class MainWindow(
             script = storage.load(path)
             self.load_script(script, path)
             self.remember_script_directory(path.parent)
+            self.remember_workflow(path, script)
+            self.refresh_library()
             self.status.setText(f"Opened {Path(path).name}")
         except (ValueError, OSError) as exc:
             self.show_error(str(exc))
@@ -727,6 +739,7 @@ class MainWindow(
             storage.save(script, self.path)
             self.remember_script_directory(self.path.parent)
             self.saved_snapshot = script.to_dict()
+            self.remember_workflow(self.path, script)
             self.clear_recovery()
             self.edited()
             self.refresh_library()
@@ -763,17 +776,6 @@ class MainWindow(
         self.path = old
         return False
 
-    def refresh_library(self):
-        self.library.clear()
-        for path in sorted(self.library_dir.glob("*.json")):
-            item = QListWidgetItem(path.stem)
-            item.setIcon(icon("flow", "#b5a4fa"))
-            item.setData(Qt.UserRole, str(path))
-            item.setToolTip(str(path))
-            self.library.addItem(item)
-        self.library_empty.setVisible(self.library.count() == 0)
-        self.filter_library()
-
     def open_library(self, item):
         path = item.data(Qt.UserRole)
         self.open_path(path)
@@ -805,6 +807,7 @@ class MainWindow(
             self.device_list,
             self.mode,
             self.target,
+            self.activate_target,
             self.refresh_target_btn,
             self.speed,
             self.repeats,
@@ -852,6 +855,7 @@ class MainWindow(
         self.target.setVisible(False)
         self.refresh_target_btn.setVisible(True)
         self.session_controls.setVisible(self.mode.currentIndex() == 2)
+        self.activate_target.setVisible(self.mode.currentIndex() == 0)
         changed = getattr(self, "last_routing_mode", None) != self.mode.currentIndex()
         self.last_routing_mode = self.mode.currentIndex()
         if changed:
@@ -864,11 +868,18 @@ class MainWindow(
             if self.mode.currentIndex() == 1
             else "Runs in a separate Gamescope display. Your normal mouse, keyboard and other desktops stay independent. Launch the game here first; existing instances cannot be moved."
             if self.mode.currentIndex() == 2
-            else "Uses your desktop mouse and keyboard. Choose an open window to stop playback if it loses focus, or leave it on any active window. Focus your game during the countdown."
+            else "Desktop playback uses your normal pointer. The selected window must stay focused; switching away stops the workflow."
         )
         self.update_run_summary()
 
     def refresh_windows(self):
+        if (
+            not self.demo
+            and QApplication.platformName() != "offscreen"
+            and "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+            and not self.window_observer.snapshot()[2]
+        ):
+            self.window_observer.start()
         if self.mode.currentIndex() == 2:
             self.populate_targets(self.session_targets)
             self.session_tick()
@@ -1078,6 +1089,9 @@ class MainWindow(
         if not rows:
             self.show_error("Select an action to re-record first")
             return
+        if any(self.model.steps[row].action == "note" for row in rows):
+            self.show_error("Notes are visual only. Select input actions to re-record.")
+            return
         if rows != list(range(rows[0], rows[-1] + 1)):
             self.show_error("Re-record one action or adjacent actions together")
             return
@@ -1108,6 +1122,12 @@ class MainWindow(
             ):
                 return
         self.record_replace_rows = list(replace_rows) if replace_rows is not None else None
+        groups = (
+            {self.model.steps[row].group_id for row in replace_rows}
+            if replace_rows is not None
+            else set()
+        )
+        self.record_group_id = next(iter(groups)) if len(groups) == 1 else ""
         if replace_rows is not None:
             self.record_prefix = list(self.model.steps[: replace_rows[0]])
             self.record_suffix = list(self.model.steps[replace_rows[-1] + 1 :])
@@ -1131,6 +1151,8 @@ class MainWindow(
             start_at=self.record_deadline,
         )
         self.record_started = self.record_deadline
+        self.preview_updated_at = 0
+        self.record_preview.set_snapshot(0, [], [], 0)
         self.record_btn.setText("Finish · F6")
         self.update_busy(True)
         self.record_timer.start()
@@ -1161,11 +1183,21 @@ class MainWindow(
         else:
             self.update_countdown()
         if self.recorder.active and not self.record_pending:
-            self.run_state.setText("●  RECORDING")
-            self.status.setText(
-                f"● Recording  ·  {time.monotonic() - self.record_started:.1f}s  ·  "
-                f"{self.recorder.count():,} events  ·  F6 finish / F12 stop"
-            )
+            now = time.monotonic()
+            self.record_preview.show()
+            if not self.model.steps:
+                self.welcome_heading.setText("Recording your routine")
+                self.welcome_description.setText(
+                    "Your latest inputs appear above. Finish with F6 to edit the workflow."
+                )
+                self.welcome_example.hide()
+            if now - self.preview_updated_at >= 0.1:
+                self.record_preview.set_snapshot(
+                    *self.recorder.preview(), now - self.record_started
+                )
+                self.preview_updated_at = now
+            self.run_state.hide()
+            self.status.setText("F6 adds this recording · Discard keeps the original workflow")
 
     def toggle_play(self):
         if getattr(self, "replay", None) and self.replay.running:
@@ -1227,7 +1259,11 @@ class MainWindow(
                 selected_window = self.target.currentData()
                 if selected_window is not None:
                     factory = partial(
-                        guarded_desktop, factory, selected_window, self.window_observer
+                        guarded_desktop,
+                        factory,
+                        selected_window,
+                        self.window_observer,
+                        self.activate_target.isChecked(),
                     )
             self.playback_error = False
             self.playback_started = False
@@ -1261,6 +1297,10 @@ class MainWindow(
             self.replay.pause()
 
     def stop(self, discard_recording=False):
+        self.record_preview.hide()
+        self.welcome_heading.setText("Create your first workflow")
+        self.welcome_description.setText("Click Record below, or Add action above.")
+        self.welcome_example.show()
         cancelled_recording = self.record_pending and time.monotonic() < getattr(
             self, "record_deadline", float("inf")
         )
@@ -1279,6 +1319,10 @@ class MainWindow(
             self.status.setText("Recording cancelled")
         if self.recorder.active:
             steps = self.recorder.stop()
+            if getattr(self, "record_group_id", ""):
+                from dataclasses import replace
+
+                steps = [replace(step, group_id=self.record_group_id) for step in steps]
             prefix = getattr(self, "record_prefix", [])
             suffix = getattr(self, "record_suffix", [])
             if discard_recording or not any(s.action != "wait" for s in steps):
@@ -1420,6 +1464,8 @@ class MainWindow(
         if not self.confirm_close_documents():
             event.ignore()
             return
+        self.library_shutdown = True
+        self.library_stop.set()
         self.window_observer.close()
         if self.portal_connection:
             self.portal_connection.close()

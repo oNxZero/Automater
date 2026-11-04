@@ -120,11 +120,11 @@ class WindowPicker(QDialog):
         self.hint.setText(
             "Independent game session · your desktop mouse and keyboard remain free."
             if self.mode == 2
-            else "This window requires active-desktop playback. Keep it focused; playback stops when focus changes."
+            else "This window needs desktop playback. Studio can bring it forward automatically after the countdown. Your normal pointer is used."
             if self.mode == 1 and desktop_only
             else "Background delivery · some apps and games ignore these events."
             if self.mode == 1
-            else "Keep this window focused during playback. Switching away stops the workflow. Mouse movement still uses your desktop pointer."
+            else "Studio can bring this window forward after the countdown. Desktop playback uses your normal pointer and stops if you switch away. Independent input needs a background mode."
         )
 
     def accept_choice(self):

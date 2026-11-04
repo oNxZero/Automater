@@ -1,3 +1,5 @@
+import html
+from copy import deepcopy
 from dataclasses import replace
 
 from PySide6.QtCore import QAbstractTableModel, Qt, Signal
@@ -11,7 +13,7 @@ from PySide6.QtWidgets import (
     QTableView,
 )
 
-from .models import ACTIONS, KEY_CODES, MAX_STEPS
+from .models import ACTIONS, KEY_CODES, MAX_STEPS, Script
 
 FIELDS = ("enabled", "delay_ms", "action", "code", "x", "y", "delay_max_ms")
 HEADERS = (
@@ -26,15 +28,16 @@ HEADERS = (
 
 
 class Change(QUndoCommand):
-    def __init__(self, model, steps, text):
+    def __init__(self, model, steps, text, groups):
         super().__init__(text)
         self.model, self.before, self.after = model, list(model.steps), list(steps)
+        self.before_groups, self.after_groups = deepcopy(model.groups), deepcopy(groups)
 
     def redo(self):
-        self.model.replace(self.after)
+        self.model.replace(self.after, self.after_groups)
 
     def undo(self):
-        self.model.replace(self.before)
+        self.model.replace(self.before, self.before_groups)
 
 
 class StepModel(QAbstractTableModel):
@@ -44,22 +47,34 @@ class StepModel(QAbstractTableModel):
     def __init__(self, undo: QUndoStack):
         super().__init__()
         self.steps = []
+        self.groups = {}
         self.undo = undo
         self.playing_row = -1
         self.execution_trace = None
 
-    def replace(self, steps):
+    def replace(self, steps, groups=None):
         self.beginResetModel()
         self.steps = list(steps)
+        source = self.groups if groups is None else groups
+        used = {step.group_id for step in steps if step.group_id}
+        self.groups = deepcopy({key: value for key, value in source.items() if key in used})
         self.endResetModel()
         self.changed.emit()
 
-    def commit(self, steps, text):
+    def commit(self, steps, text, groups=None):
         if len(steps) > MAX_STEPS:
             self.invalid.emit(f"At most {MAX_STEPS:,} steps are supported")
             return
-        if steps != self.steps:
-            self.undo.push(Change(self, steps, text))
+        source = self.groups if groups is None else groups
+        used = {step.group_id for step in steps if step.group_id}
+        groups = {key: value for key, value in source.items() if key in used}
+        try:
+            Script(steps=list(steps), groups=groups).validate()
+        except ValueError as exc:
+            self.invalid.emit(str(exc))
+            return
+        if steps != self.steps or groups != self.groups:
+            self.undo.push(Change(self, steps, text, groups))
 
     def rowCount(self, parent=None):
         return 0 if parent is not None and parent.isValid() else len(self.steps)
@@ -78,7 +93,11 @@ class StepModel(QAbstractTableModel):
         value = getattr(step, FIELDS[index.column()])
         if role == Qt.CheckStateRole and index.column() == 0:
             return Qt.Checked if value else Qt.Unchecked
+        if role == Qt.ToolTipRole and step.action == "note":
+            return "<qt>" + html.escape(step.text).replace("\n", "<br>") + "</qt>"
         if role in (Qt.DisplayRole, Qt.EditRole) and index.column() != 0:
+            if role == Qt.DisplayRole and index.column() == 3 and step.action == "note":
+                return step.title or "Note"
             if role == Qt.DisplayRole and value is None:
                 return "Fixed"
             return round(value, 3) if isinstance(value, float) else value
@@ -91,13 +110,17 @@ class StepModel(QAbstractTableModel):
                     return QColor("#593245")
                 if index.row() == trace["last_activity_row"]:
                     return QColor("#2b4059" if index.row() <= trace["completed_row"] else "#54452d")
-            if step.enabled and index.row() <= trace["completed_row"]:
+            if step.runnable and index.row() <= trace["completed_row"]:
                 return QColor("#243e39")
         if role == Qt.ForegroundRole and not step.enabled:
             return QColor("#7d859f")
 
     def flags(self, index):
+        if not index.isValid() or not 0 <= index.row() < len(self.steps):
+            return Qt.NoItemFlags
         base = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+        if self.steps[index.row()].action == "note" and index.column() not in (0, 2):
+            return base
         return base | (Qt.ItemIsUserCheckable if index.column() == 0 else Qt.ItemIsEditable)
 
     def setData(self, index, value, role=Qt.EditRole):
@@ -196,6 +219,7 @@ def editing_command(event):
             Qt.Key_V: "paste",
             Qt.Key_A: "select_all",
             Qt.Key_D: "duplicate",
+            Qt.Key_G: "ungroup" if event.modifiers() & Qt.ShiftModifier else "group",
             Qt.Key_Z: "redo" if event.modifiers() & Qt.ShiftModifier else "undo",
         }.get(event.key())
     return {
