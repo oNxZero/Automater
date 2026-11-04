@@ -38,6 +38,7 @@ class DocumentsMixin:
         doc.view = {
             "selection": self.selected_rows(),
             "layout": self.workflow.layout_choice.currentIndex(),
+            "follow": self.workflow.follow_btn.isChecked(),
             "transform": canvas.transform(),
             "horizontal": canvas.horizontalScrollBar().value(),
             "vertical": canvas.verticalScrollBar().value(),
@@ -63,7 +64,9 @@ class DocumentsMixin:
             return
         for index in range(self.document_tabs.count()):
             if self.document_id(index) == self.active_document_id:
-                title = (self.name.text().strip() or "Untitled workflow").replace("&", "&&")
+                title = (
+                    self.path.stem if self.path else self.name.text().strip() or "Untitled workflow"
+                ).replace("&", "&&")
                 self.document_tabs.setTabText(index, title + (" *" if self.dirty() else ""))
                 self.document_tabs.setTabToolTip(
                     index, str(self.path) if self.path else "Unsaved workflow"
@@ -136,8 +139,12 @@ class DocumentsMixin:
             self.test_mode.setChecked(view["test"])
             self.mode.setCurrentIndex(view["mode"])
             target = self.target_index(view["target"])
+            if target < 0 and view["mode"] == 0 and view["target"] is not None:
+                self.target.addItem("Unavailable · " + view["target"].title, view["target"])
+                target = self.target.count() - 1
             self.target.setCurrentIndex(max(0, target))
             self.workflow.layout_choice.setCurrentIndex(view["layout"])
+            self.workflow.follow_btn.setChecked(view.get("follow", True))
             self.navigate(0, 1 if view["events"] else 0)
             self.set_table_rows(view["selection"])
             indices = {
@@ -157,6 +164,7 @@ class DocumentsMixin:
         self.last_run = doc.last_run
         if self.last_run:
             self.render_playback(self.last_run)
+            self.workflow.canvas.camera.stop()  # Restore the document's own viewport below.
         self.edited()
 
         def restore_view():

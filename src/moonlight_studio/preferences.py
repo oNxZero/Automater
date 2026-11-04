@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 from .engine import PlaybackOptions
 from .storage import write_json
@@ -23,9 +24,19 @@ class Preferences:
     start_x: int = 0
     start_y: int = 0
     start_settle_ms: float = 150
+    script_directory: str | None = None
 
     def validate(self):
         from .models import number
+
+        if self.script_directory is not None and (
+            not isinstance(self.script_directory, str)
+            or not self.script_directory
+            or len(self.script_directory) > 4096
+            or "\x00" in self.script_directory
+            or not Path(self.script_directory).is_absolute()
+        ):
+            raise ValueError("Invalid script folder")
 
         number(self.start_settle_ms, "Cursor settle delay", 0, 10_000)
         PlaybackOptions(

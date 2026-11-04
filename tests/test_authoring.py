@@ -190,13 +190,13 @@ def test_precise_event_paste_selection_does_not_expand_into_neighbouring_hold(
     clean(win)
 
 
-def test_select_all_across_workflow_pages_and_remove(qtbot, tmp_path, monkeypatch):
+def test_select_all_across_continuous_workflow_and_remove(qtbot, tmp_path, monkeypatch):
     win = window(qtbot, tmp_path, monkeypatch)
     steps = [Step(50, "wait", standalone=True) for _ in range(130)]
     win.load_script(Script("Large", steps=steps))
     win.workflow_command("select_all")
     assert len(win.workflow.canvas.selected_indices) == 130
-    assert len(win.workflow.canvas.nodes) == 60
+    assert len(win.workflow.canvas.nodes) == 130
     win.workflow_command("delete")
     assert not win.model.steps
     win.undo.undo()

@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import threading
 import time
 from bisect import bisect_right
@@ -31,11 +32,13 @@ from .engine import DryRun, PlaybackOptions, Replay
 from .isolated import GameSession, IsolatedBackend
 from .linux_input import DeviceMonitor, Recorder, UInputBackend, devices, diagnostics
 from .models import KEY_CODES, MAX_STEPS, Script, Step
+from .open_windows import WindowObserver, discover_windows, guarded_desktop, matching_x11
 from .preferences import Preferences
 from .run_feedback import RunFeedbackMixin
 from .session_ui import SessionMixin
 from .theme import STYLE, icon
 from .visuals import VisualsMixin
+from .window_picker import WindowPicker
 
 
 class Bridge(QObject):
@@ -99,6 +102,10 @@ class MainWindow(
         self.session_launching = False
         self.session_query_pending = False
         self.session_targets = []
+        self.x11_targets = []
+        self.window_picker = None
+        self.window_observer = WindowObserver(self)
+        self.window_observer.changed.connect(self.desktop_windows_changed)
         self.connecting_pointer = False
         self.monitor = None
         self.monitor_generation = 0
@@ -153,7 +160,7 @@ class MainWindow(
         self.session_timer.timeout.connect(self.session_tick)
         self.session_timer.start()
         self.record_timer = QTimer(self)
-        self.record_timer.setInterval(100)
+        self.record_timer.setInterval(16)
         self.record_timer.timeout.connect(self.record_tick)
         self.load_script(sample() if demo else Script())
         if demo:
@@ -162,6 +169,12 @@ class MainWindow(
         self.refresh_devices()
         self.refresh_windows()
         self.initializing = False
+        if (
+            not demo
+            and QApplication.platformName() != "offscreen"
+            and "KDE" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+        ):
+            self.window_observer.start()
         if self.preferences_error:
             self.show_error("Settings could not be loaded; using defaults.")
             self.device_details.append(self.preferences_error)
@@ -380,6 +393,14 @@ class MainWindow(
             if self.mode.currentIndex()
             else "Active desktop"
         )
+        if not self.mode.currentIndex() and target is not None:
+            summary = "Desktop: " + target.title
+        if hasattr(self, "refresh_target_btn"):
+            title = target.title if target is not None else "Choose open window…"
+            self.refresh_target_btn.setText(
+                self.refresh_target_btn.fontMetrics().elidedText(title, Qt.ElideRight, 240)
+            )
+            self.refresh_target_btn.setToolTip(title)
         if self.start_enabled.isChecked():
             summary += f" · Start {self.start_x.value()}, {self.start_y.value()}"
         self.transport_hint.setMaximumWidth(240)
@@ -402,8 +423,8 @@ class MainWindow(
             )
         from .pointer import capability
 
-        available, description = capability()
         background = self.mode.currentIndex() != 0
+        available, description = capability()
         portal_ready = bool(self.portal_connection and self.portal_connection.active)
         if portal_ready:
             description = (
@@ -440,7 +461,7 @@ class MainWindow(
         )
         if self.workflow.canvas.start_label != start_label:
             self.workflow.canvas.start_label = start_label
-            self.workflow.canvas.render_page()
+            self.workflow.canvas.render_canvas()
         cycle = sum(s.delay_ms for s in self.model.steps if s.enabled) / self.speed.value() / 1000
         cycle_max = (
             sum(s.maximum_ms for s in self.model.steps if s.enabled) / self.speed.value() / 1000
@@ -652,18 +673,39 @@ class MainWindow(
 
     def open_script(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open script", str(self.library_dir), "Scripts (*.json)"
+            self, "Open script", str(self.script_dialog_directory()), "Scripts (*.json)"
         )
         if path:
             self.open_path(path)
 
     def open_path(self, path):
         try:
+            path = Path(path).expanduser().resolve()
             script = storage.load(path)
             self.load_script(script, path)
+            self.remember_script_directory(path.parent)
             self.status.setText(f"Opened {Path(path).name}")
         except (ValueError, OSError) as exc:
             self.show_error(str(exc))
+
+    def script_dialog_directory(self):
+        candidates = [
+            self.path.parent if self.path is not None else None,
+            Path(self.preferences.script_directory) if self.preferences.script_directory else None,
+        ]
+        for directory in candidates:
+            if directory is not None and directory.is_dir():
+                return directory.resolve()
+        try:
+            self.library_dir.mkdir(parents=True, exist_ok=True)
+            return self.library_dir.resolve()
+        except OSError as exc:
+            self.show_error(f"Could not create the workflow folder: {exc}")
+            return self.config_dir.resolve() if self.config_dir.is_dir() else Path.home()
+
+    def remember_script_directory(self, directory):
+        self.preferences.script_directory = str(Path(directory).resolve())
+        self.save_preferences()
 
     def save_script(self):
         if self.busy:
@@ -671,6 +713,7 @@ class MainWindow(
         if self.path is None:
             return self.save_as()
         try:
+            self.path = self.path.expanduser().resolve()
             script = self.script()
             for identifier, doc in self.documents.items():
                 if (
@@ -682,6 +725,7 @@ class MainWindow(
                         "That file is already open in another workflow tab. Use that tab or choose a different filename."
                     )
             storage.save(script, self.path)
+            self.remember_script_directory(self.path.parent)
             self.saved_snapshot = script.to_dict()
             self.clear_recovery()
             self.edited()
@@ -696,15 +740,24 @@ class MainWindow(
         if self.busy:
             return False
         default = "".join(c if c.isalnum() or c in " -_" else "_" for c in self.name.text())
-        dialog = QFileDialog(
-            self, "Save script", str(self.library_dir / (default + ".json")), "Scripts (*.json)"
+        filename = (
+            self.path.name
+            if self.path is not None
+            else (default.strip() or "Untitled script") + ".json"
         )
+        directory = self.script_dialog_directory()
+        dialog = QFileDialog(self, "Save script", str(directory), "Scripts (*.json)")
         dialog.setAcceptMode(QFileDialog.AcceptSave)
         dialog.setDefaultSuffix("json")
+        dialog.setDirectory(str(directory))
+        dialog.selectFile(filename)
         if dialog.exec() != QDialog.Accepted:
             return False
         old = self.path
-        self.path = Path(dialog.selectedFiles()[0])
+        chosen = Path(dialog.selectedFiles()[0]).expanduser()
+        self.path = (
+            chosen if chosen.is_absolute() else Path(dialog.directory().absolutePath()) / chosen
+        ).resolve()
         if self.save_script():
             return True
         self.path = old
@@ -794,11 +847,10 @@ class MainWindow(
             self.routing_changed()
 
     def routing_changed(self):
-        background = self.mode.currentIndex() != 0
-        self.target.setEnabled(background and not self.busy)
-        self.refresh_target_btn.setEnabled(background and not self.busy)
-        self.target.setVisible(background)
-        self.refresh_target_btn.setVisible(background)
+        self.target.setEnabled(not self.busy)
+        self.refresh_target_btn.setEnabled(not self.busy)
+        self.target.setVisible(False)
+        self.refresh_target_btn.setVisible(True)
         self.session_controls.setVisible(self.mode.currentIndex() == 2)
         changed = getattr(self, "last_routing_mode", None) != self.mode.currentIndex()
         self.last_routing_mode = self.mode.currentIndex()
@@ -812,8 +864,7 @@ class MainWindow(
             if self.mode.currentIndex() == 1
             else "Runs in a separate Gamescope display. Your normal mouse, keyboard and other desktops stay independent. Launch the game here first; existing instances cannot be moved."
             if self.mode.currentIndex() == 2
-            else "Sends to the active desktop. Focus the game during the countdown. "
-            "Works on Wayland and X11 with uinput access."
+            else "Uses your desktop mouse and keyboard. Choose an open window to stop playback if it loses focus, or leave it on any active window. Focus your game during the countdown."
         )
         self.update_run_summary()
 
@@ -822,13 +873,52 @@ class MainWindow(
             self.populate_targets(self.session_targets)
             self.session_tick()
             return
-        self.target.clear()
-        self.target.addItem("Choose a program window…", None)
+        error = ""
         try:
-            for window in x11.windows():
-                self.target.addItem(f"{window.title} · PID {window.pid}", window)
+            self.x11_targets = x11.windows()
         except Exception as exc:
-            self.target.setToolTip(f"X11 window enumeration unavailable: {exc}")
+            self.x11_targets = []
+            error = f"X11 windows unavailable: {exc}"
+        self.target.setToolTip(error)
+        self.desktop_windows_changed()
+
+    def desktop_windows_changed(self):
+        if self.busy or self.mode.currentIndex() == 2:
+            return
+        windows = discover_windows(self.x11_targets, self.window_observer)
+        if self.mode.currentIndex() == 1:
+            windows = [matching_x11(window, self.x11_targets) or window for window in windows]
+        self.populate_targets(windows)
+        if self.window_picker is not None:
+            _, _, available, error = self.window_observer.snapshot()
+            message = "" if available else error or self.target.toolTip()
+            self.window_picker.set_windows(windows, message if not windows else "")
+
+    def choose_open_window(self):
+        if self.busy:
+            return
+        self.refresh_windows()
+        picker = WindowPicker(self, self.refresh_windows)
+        self.window_picker = picker
+        picker.set_windows(self.available_targets)
+        try:
+            if picker.exec() != QDialog.Accepted:
+                return
+            chosen = picker.choice
+            if chosen is not None and self.mode.currentIndex() == 1:
+                background = matching_x11(chosen, self.x11_targets)
+                if background is None:
+                    self.mode.setCurrentIndex(0)
+                else:
+                    chosen = background
+                    # Store the unambiguous X11 identity for the background backend.
+                    if self.target_index(chosen) < 0:
+                        self.target.addItem(chosen.title, chosen)
+            self.target.setCurrentIndex(max(0, self.target_index(chosen)))
+            self.update_run_summary()
+        finally:
+            self.window_picker = None
+            picker.deleteLater()
 
     def refresh_devices(self):
         if self.busy:
@@ -1032,6 +1122,15 @@ class MainWindow(
         self.navigate(0, 0)
         self.record_deadline = time.monotonic() + self.countdown.value()
         self.countdown_total = self.countdown.value()
+        # Arm now; the input thread gates events against the exact countdown deadline.
+        self.recorder.start(
+            self.capture_keys.isChecked(),
+            self.capture_buttons.isChecked(),
+            self.capture_motion.isChecked(),
+            limit=MAX_STEPS - len(self.record_base),
+            start_at=self.record_deadline,
+        )
+        self.record_started = self.record_deadline
         self.record_btn.setText("Finish · F6")
         self.update_busy(True)
         self.record_timer.start()
@@ -1054,13 +1153,6 @@ class MainWindow(
             return
         self.record_timer.stop()
         self.record_pending = False
-        self.recorder.start(
-            self.capture_keys.isChecked(),
-            self.capture_buttons.isChecked(),
-            self.capture_motion.isChecked(),
-            limit=MAX_STEPS - len(self.record_base),
-        )
-        self.record_started = time.monotonic()
         self.update_busy(True)
 
     def capture_tick(self):
@@ -1068,7 +1160,7 @@ class MainWindow(
             self.render_playback()
         else:
             self.update_countdown()
-        if self.recorder.active:
+        if self.recorder.active and not self.record_pending:
             self.run_state.setText("●  RECORDING")
             self.status.setText(
                 f"● Recording  ·  {time.monotonic() - self.record_started:.1f}s  ·  "
@@ -1113,6 +1205,11 @@ class MainWindow(
                 target = self.target.currentData()
                 if target is None:
                     raise ValueError("Choose a target program window first")
+                target = matching_x11(target, self.x11_targets)
+                if target is None:
+                    raise ValueError(
+                        "This window needs Active desktop mode. Choose it in the open-window picker."
+                    )
                 factory = partial(x11.BackgroundBackend, target)
             elif self.mode.currentIndex() == 2:
                 target = self.target.currentData()
@@ -1126,6 +1223,11 @@ class MainWindow(
 
                     factory = partial(
                         UInputBackend, pointer_factory=lambda: PortalPointer(self.portal_connection)
+                    )
+                selected_window = self.target.currentData()
+                if selected_window is not None:
+                    factory = partial(
+                        guarded_desktop, factory, selected_window, self.window_observer
                     )
             self.playback_error = False
             self.playback_started = False
@@ -1159,6 +1261,9 @@ class MainWindow(
             self.replay.pause()
 
     def stop(self, discard_recording=False):
+        cancelled_recording = self.record_pending and time.monotonic() < getattr(
+            self, "record_deadline", float("inf")
+        )
         self.close_overlay()
         if self.connecting_pointer:
             self.connecting_pointer = False
@@ -1177,7 +1282,11 @@ class MainWindow(
             prefix = getattr(self, "record_prefix", [])
             suffix = getattr(self, "record_suffix", [])
             if discard_recording or not any(s.action != "wait" for s in steps):
-                self.status.setText("Recording discarded · existing actions kept")
+                self.status.setText(
+                    "Recording cancelled · existing actions kept"
+                    if cancelled_recording
+                    else "Recording discarded · existing actions kept"
+                )
             else:
                 self.selection_anchor = len(prefix)
                 self.pending_rows = list(range(len(prefix), len(prefix) + len(steps)))
@@ -1311,6 +1420,7 @@ class MainWindow(
         if not self.confirm_close_documents():
             event.ignore()
             return
+        self.window_observer.close()
         if self.portal_connection:
             self.portal_connection.close()
         if self.monitor:

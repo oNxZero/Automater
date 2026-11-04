@@ -10,7 +10,7 @@ Record your keyboard and mouse. Shape the sequence visually. Run it your way.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Studio-v0.6-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Studio-v0.7-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 
 A native Python desktop app inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
@@ -35,6 +35,31 @@ Your original input samples and timings stay available in the **Events** view.
 | Click a card to edit its properties | Pause, resume and F12 emergency stop | Atomic saves and autosave recovery |
 | Insert between cards; duplicate or reorder | Watch the active action during replay | Undo / redo up to 50 event edits |
 
+## New in v0.7: continuous workflows and open-window selection
+
+- **One continuous canvas:** all actions share the same scrollable workspace in
+  Horizontal, Vertical and Grid layouts. Large routines render cards near the
+  viewport to keep panning responsive, while retaining every event and selection.
+- **Preview your drop:** dragging marks the original position, shows a translucent
+  destination card and shifts neighbouring cards into their proposed order.
+  Edge scrolling reaches distant actions. Escape cancels; a drop is one Undo.
+- **Smooth playback follow:** the camera eases toward each running action instead
+  of jumping. Turn **Follow playback** off to inspect elsewhere during a run.
+- **Choose open windows:** Settings → Run → **Choose open window** searches by
+  title or app name. KDE Plasma includes native Wayland windows; X11/Xwayland
+  discovery is also available. Selecting a desktop window adds a focus check:
+  switching away stops playback. Independent background input remains a separate mode.
+- **More faithful timing:** replay keeps a cumulative timeline instead of adding
+  scheduler overshoot to every mouse report. Late dispatch preserves recorded key/
+  button hold and release intervals. Capture arms at the countdown deadline, and
+  ready keyboard/mouse batches are merged by kernel timestamp.
+- **Clearer files and tabs:** tabs sit directly above the canvas, with close buttons
+  inside each tab. Saved tabs use the filename. Open and Save As share an existing,
+  remembered folder and handle relative filenames inside that folder.
+
+![Drag origin and proposed action placement](docs/drag-preview.png)
+![Search open windows](docs/window-picker.png)
+
 ## New in v0.6: separate game sessions, tabs and run results
 
 - **Independent game input:** Settings → Run → Separate game session starts Sober
@@ -48,7 +73,7 @@ Your original input samples and timings stay available in the **Events** view.
 - **Worker-clock feedback:** countdown uses the actual replay deadline. The UI
   distinguishes delay, timer, held input, reset, settle, pause and loop gap; it no
   longer labels an upcoming input as already running. GUI polling is 30 Hz and
-  action rendering remains bounded to the current page.
+  action rendering is limited to cards near the visible area.
 - **Keep the last run:** completed actions remain green; the last completed action
   is blue, an interrupted action amber and a failed step red. Marks belong to the
   workflow tab and clear on edits/new playback. Edit → Last playback details shows
@@ -97,7 +122,7 @@ See the [bug and usability audit](docs/AUDIT.md) for fixes and remaining checks.
   copy/cut/paste, duplicate, delete, selection-wide enable/disable and undo/redo.
   Copy/paste retains keys, timers, ranges and grouping metadata.
 - **Three layouts:** Horizontal, Vertical and Grid. Playback order stays numbered;
-  changing layout never changes event data. Selection is retained across pages.
+  changing layout never changes event data. Selection is retained while scrolling.
 - **Loop starting point:** reset to an X/Y position before **every** loop, allow a
   settle delay, then begin the action sequence. Starting points are stored with
   the workflow. Desktop resets support X11 and Hyprland; background mode uses
@@ -219,13 +244,13 @@ to pan; hold **Ctrl** and scroll to zoom. Use **Fit** to reframe the workflow.
 The plus buttons between cards insert an action at that exact point. The Add action
 dialog supports independent Press and Release as well as timed holds. Right-click a
 card for duplicate, enable/disable, move and delete. Arrow keys select actions; Shift + arrows extend selection. **Alt + arrows** moves
-the selection. **Delete** removes selected actions. Ctrl+A selects all pages.
+the selection. **Delete** removes selected actions. Ctrl+A selects the entire workflow.
 The layout selector switches Horizontal / Vertical / Grid. Press F1 for all shortcuts.
 
 **Recording detail stays intact.** Adjacent matching press/release events become
 one hold/click card. Consecutive recorded movement or scroll samples share a card, while
 Events retains every sample. Overlapping key holds stay separate. Large workflows
-use pages of at most 60 cards, keeping the canvas responsive. This is a linear
+use one continuous, virtualized canvas to keep scrolling responsive. This is a linear
 sequence; repeat the whole workflow in Settings → Run. Branches and nested loops
 remain on the roadmap.
 
@@ -245,7 +270,7 @@ recovery and common questions.
 | Ctrl+Shift+S | Save as |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo event edits |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste selected actions |
-| Ctrl+D / Ctrl+A | Duplicate / select all, including other pages |
+| Ctrl+D / Ctrl+A | Duplicate / select the whole workflow |
 | Esc | Clear selection |
 | Shift + arrows / left-drag empty space | Extend selection / box-select |
 | Ctrl+wheel / Ctrl+0 | Zoom / fit |
@@ -336,8 +361,12 @@ your character, camera or game state. See [platform implementation notes](docs/P
 | Xwayland application | uinput | Experimental directed X11 events |
 | Windows / macOS | Future backend | Future assessment |
 
-The program picker lists **windows**, with title and PID. Refresh it after opening
-the game. Window identity and liveness are checked during playback; losing the
+Click **Choose open window** to search running windows by title or application.
+KDE Plasma discovery includes native Wayland windows; other desktops currently list
+X11/Xwayland windows. No executable file is needed to select an existing window.
+Active desktop uses your normal pointer and requires the chosen window to stay
+focused. Independent input uses Existing window (best effort) or a new Gamescope
+session. Window identity and liveness are checked during playback; losing the
 target stops playback. Background key mapping assumes the standard Xorg/Xwayland
 evdev XKB mapping. Background mouse movement is a virtual cursor starting in the
 window center, clamped to its initial client bounds. It is not raw camera motion.

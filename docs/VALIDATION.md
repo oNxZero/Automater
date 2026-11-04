@@ -1,11 +1,11 @@
-# Verification of v0.6
+# Verification of v0.7
 
 Implemented and checked on 2026-11-04 in a Linux development sandbox using
 Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
 
 ## Completed
 
-- **194 automated tests passed**, including offscreen Qt workflows and five live X11
+- **217 automated tests passed**, including offscreen Qt workflows and five live X11
   integration tests against an unmapped, controlled receiver. No user window was
   targeted and focus was never changed by the tests.
 - Reproduced a Qt/PySide6 6.12.0 reference-count crash during repeated painting on
@@ -45,7 +45,7 @@ Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
   edits to both halves of a key hold, action insertion/reordering/undo, duplicate/
   disable/delete, grouped mouse timing with original coordinates retained, empty
   state and navigation, canvas/event selection sync, actual pointer drag reorder,
-  bounded page rendering, and read-only behavior during replay.
+  viewport virtualization, and read-only behavior during replay.
 - X11 integration verifies keyboard/modifier state, mouse coordinates, wheel/button
   messages, unchanged focus, two simultaneous Shift keys, changed window identity,
   and background compatibility preflight.
@@ -57,8 +57,9 @@ Python 3.14.8 and 3.11.18, Qt/PySide6 6.11.2, evdev 1.9.3, and python-xlib 0.33.
   produced [the animated walkthrough](workflow-demo.gif). Record/run/pause/stop
   remain in a fixed transport bar, with Pause/Stop hidden while idle. Properties
   are opened on demand. The previous sidebar and duplicate navigation are removed.
-- A synthetic 10,130-event recording is preserved by the workflow tests while
-  graphics scenes remain bounded to 60 cards per page.
+- A synthetic 20,000-event recording projects to 10,001 actions on one continuous
+  canvas. Tests scroll to the middle and smoothly follow the end while graphics
+  remain limited to the visible area and every original event is retained.
 - `./start.sh --doctor` works and accurately reports the sandbox's missing device
   nodes instead of claiming recording/replay access.
 - GitHub Actions is configured for Python 3.11 and 3.14 on Ubuntu, using Xvfb for
@@ -89,7 +90,7 @@ The synthetic portal cannot establish physical compositor or game compatibility.
 
 The v0.4 additions also verify Press/Release grouping, extended keys, random ranges,
 v1/v2 persistence, clipboard validation, native editing shortcuts, precise Events
-selections, cross-page select/delete/undo, box selection, group moves and all three
+selections, whole-workflow select/delete/undo, box selection, group moves and all three
 layouts. Loop-start tests check reset order every loop, coordinate-space mismatch,
 failed preflight cleanup, cancellation, repeated timing sampling and speed scaling.
 X11/Hyprland desktop providers are mocked: bounds, scale, transform, negative monitor
@@ -122,7 +123,7 @@ manual checks remain unverified:
    background coordinates separately in the intended X11 application.
 
 Native Wayland background routing, gamepad/absolute input, Windows/macOS, process
-watchdogs, and packaged installers are roadmap work, not verified v0.6 features.
+watchdogs, and packaged installers are roadmap work, not verified v0.7 features.
 
 7. On KDE and GNOME portal backends, approve the intended monitors, deny/cancel,
    revoke permission during a loop, change monitor layout/scale, reconnect, and
@@ -153,3 +154,28 @@ unverified. No existing Sober process was closed or relaunched.
 Actual Qt screenshots show workflow tabs, the session dialog and stopped-run
 markers at 1240×800; 1000×680 was also visually checked. Local Xvfb was extracted
 into /tmp for testing only; no system packages or input permissions were changed.
+
+
+## v0.7 checks and limits
+
+- Regression tests cover cumulative scheduling without accumulated wakeup/send
+  cost, preserved late key/button holds and release intervals, exact recording
+  arming, chronological drained-device batches (including multiple 64-event reads), filename tab labels and consistent
+  Open/Save As directories across restart.
+- Window-picker tests search app/title, select native windows explicitly for
+  desktop playback, retain closed selections and reject focus loss before input.
+  The KDE observer is tested over a private D-Bus daemon, including script load,
+  live focus/window updates and normal unload. No real input is emitted by these tests.
+- A read-only check against the actual KDE session successfully enumerated 11
+  windows and an active identity, then unloaded the temporary script. No focus,
+  game state, desktop preferences or persistent KWin settings were changed.
+- Drag tests verify previews leave events unchanged, cancellation restores positions
+  and selection, and dropping remains undoable. Camera tests verify intermediate
+  positions and disabling follow. UI screenshots were checked at 1240×800 and
+  1000×680; picker screenshots use illustrative titles, not private user windows.
+- A local input-free benchmark of 1,000 reports at 1 ms requested 1 s: before the
+  scheduling fix it took 1.0533 s; after it took 1.000066 s. These are single local
+  measurements, not a real-time guarantee or proof of hardware/game acceptance.
+- Actual keyboard/mouse acceptance in the user's game remains unverified: this
+  sandbox has no physical input/uinput devices. Relative counts do not guarantee
+  pixel-identical paths or camera movement, and existing recordings are not rewritten.

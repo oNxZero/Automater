@@ -13,6 +13,11 @@ class SessionMixin:
         self.session_status.setText(text)
         self.session_dialog_status.setText(text)
 
+    def choose_existing_desktop_window(self):
+        self.session_dialog.hide()
+        self.mode.setCurrentIndex(0)
+        self.choose_open_window()
+
     def launch_game_session(self):
         if self.session_launching or self.busy:
             return
@@ -58,17 +63,35 @@ class SessionMixin:
 
     def populate_targets(self, windows):
         previous = self.target.currentData()
+        self.available_targets = list(windows)
         self.target.blockSignals(True)
         self.target.clear()
-        self.target.addItem("Choose a game window…", None)
+        self.target.addItem(
+            "Any active window" if self.mode.currentIndex() == 0 else "Choose an open window…", None
+        )
         for window in windows:
             self.target.addItem(f"{window.title} · PID {window.pid}", window)
         at = self.target_index(previous)
+        if (
+            previous is not None
+            and at < 0
+            and self.mode.currentIndex() == 0
+            and getattr(self, "last_target_mode", 0) == 0
+        ):
+            self.target.addItem("Unavailable · " + previous.title, previous)
+            at = self.target.count() - 1
+        self.last_target_mode = self.mode.currentIndex()
         self.target.setCurrentIndex(
-            at if previous is not None and at >= 0 else 1 if len(windows) == 1 else 0
+            at
+            if previous is not None and at >= 0
+            else 1
+            if self.mode.currentIndex() == 2 and len(windows) == 1
+            else 0
         )
         self.target.blockSignals(False)
         self.update_run_summary()
+        if self.window_picker is not None and self.mode.currentIndex() == 2:
+            self.window_picker.set_windows(windows)
 
     def target_index(self, target):
         if target is None:

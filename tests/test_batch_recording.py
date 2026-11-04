@@ -293,3 +293,27 @@ def test_table_clear_and_partial_batch_do_not_edit_other_rows(qtbot, tmp_path, m
     win.table.clearSelection()
     assert not win.workflow.canvas.selected_indices and win.active_block is None
     clean(win)
+
+
+def test_recording_accepts_first_press_before_countdown_ui_catches_up(qtbot, tmp_path, monkeypatch):
+    import time
+
+    win = window(qtbot, tmp_path, monkeypatch)
+    setup_recording(win, monkeypatch)
+    win.countdown.setValue(1)
+    before = list(win.model.steps)
+    win.begin_recording()
+    assert win.record_pending and win.recorder.active
+    win.recorder.feed(
+        InputEvent(0, 0, ecodes.EV_KEY, ecodes.KEY_A, 1), occurred_at=win.record_deadline + 0.01
+    )
+    win.recorder.feed(
+        InputEvent(0, 0, ecodes.EV_KEY, ecodes.KEY_A, 0), occurred_at=win.record_deadline + 0.06
+    )
+    # The GUI has not ticked yet. Transitioning it must preserve captured inputs.
+    win.record_deadline = time.monotonic() - 0.01
+    win.record_tick()
+    win.stop()
+    assert win.model.steps[: len(before)] == before
+    assert [s.code for s in win.model.steps[len(before) : len(before) + 2]] == ["KEY_A", "KEY_A"]
+    clean(win)

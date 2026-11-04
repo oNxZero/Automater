@@ -65,3 +65,23 @@ evidence, not a claim that every bug has been found.
 - A host-pointer comparison in an X11 test could fail when the user physically moved
   the mouse. It now forbids pointer-warp/XTEST APIs in background routing; separate
   input tests use a test-owned Xvfb server.
+
+
+## v0.7 findings and changes
+
+| Finding | Fix / evidence |
+| --- | --- |
+| Tiny wakeup delays accumulated across every motion report | Preserve cumulative deadlines. A local 1,000-report dry run requesting 1 s improved from 1.0533 s to 1.000066 s. This is scheduler evidence, not a real-game acceptance guarantee. |
+| Catching up after a late press could shorten its hold or the next release interval | Protect each key/button transition interval from actual dispatch completion; deterministic regressions cover late keyboard and mouse sends. |
+| Recording waited for a 100 ms UI tick after the countdown | Arm capture immediately against the monotonic deadline; ignore earlier input and retain the first post-deadline press before the UI tick. |
+| Keyboard batches could precede older mouse events | Drain pending evdev batches before merging events by kernel timestamp; preserve per-device report order even when more than 64 events are queued. |
+| App selection looked like choosing a game executable | Search open windows directly. Native KDE Wayland windows are discovered read-only; unsupported background delivery is labelled and offers desktop playback explicitly. |
+| A closed desktop target could become unrestricted playback after refreshing | Retain the unavailable selection and reject playback until the user chooses a valid window or explicitly clears it. |
+| Action pages interrupted long workflows | Replace pages with global positions and viewport virtualization; a 20,000-event regression scrolls/follows a 10,001-action scene without losing events. |
+| Dragging gave no origin or insertion preview | Original-position markers, proposed-order ghosts and neighbours, edge scrolling, Escape cancellation and one-drop Undo. |
+| Playback camera jumped between cards | Cancellable easing animation, clamped endpoints, and a Follow playback toggle. Replay scheduling remains in its worker. |
+| Tabs sat above the title and close icons crossed the edge | Tabs now sit above the editor; native close-button geometry reserves an inset. |
+| Saved tabs used the internal Untitled title and file choosers disagreed | Tab labels use filename stems. Open/Save As share an existing directory, remember it and resolve relative saves within it; dialog regressions cover restart and new tabs. |
+
+Physical-game accuracy and native Wayland discovery outside KDE still require
+platform-specific work. No claim is made that every real game accepts every input.

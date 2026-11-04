@@ -109,3 +109,114 @@ def test_monitor_routes_physical_events_and_hotkeys(monkeypatch):
     assert not errors
     assert shortcuts == ["stop"]
     assert [s.action for s in recorder.stop()] == ["key_down", "key_up", "wait"]
+
+
+def test_armed_recording_uses_deadline_without_waiting_for_gui(monkeypatch):
+    import pytest
+
+    from moonlight_studio import linux_input
+
+    monkeypatch.setattr(linux_input.time, "monotonic", lambda: 102.0)
+    recorder = Recorder()
+    recorder.start(start_at=101.0)
+    recorder.feed(event(ecodes.KEY_B, 1), occurred_at=100.99)
+    recorder.feed(event(ecodes.KEY_A, 1), occurred_at=101.01)
+    recorder.feed(event(ecodes.KEY_A, 0), occurred_at=101.06)
+    steps = recorder.stop()
+    assert [s.code for s in steps[:2]] == ["KEY_A", "KEY_A"]
+    assert steps[0].delay_ms == pytest.approx(10)
+    assert steps[1].delay_ms == pytest.approx(50)
+
+
+def test_monitor_interleaves_ready_keyboard_and_mouse_batches_by_kernel_timestamp(monkeypatch):
+    from moonlight_studio import linux_input
+
+    recorder = Recorder()
+    recorder.start(start_at=100)
+
+    class Device:
+        def __init__(self, path, fd, events):
+            self.path, self.fd, self.events = path, fd, events
+
+        def read(self):
+            return self.events
+
+        def close(self):
+            pass
+
+    keyboard = Device(
+        "keyboard",
+        1,
+        [
+            InputEvent(100, 20000, ecodes.EV_KEY, ecodes.KEY_A, 1),
+            InputEvent(100, 40000, ecodes.EV_KEY, ecodes.KEY_A, 0),
+            InputEvent(100, 50000, ecodes.EV_KEY, ecodes.KEY_F12, 1),
+        ],
+    )
+    mouse = Device(
+        "mouse",
+        2,
+        [
+            InputEvent(100, 10000, ecodes.EV_REL, ecodes.REL_X, 12),
+            InputEvent(100, 10000, ecodes.EV_SYN, ecodes.SYN_REPORT, 0),
+            InputEvent(100, 30000, ecodes.EV_REL, ecodes.REL_Y, 9),
+            InputEvent(100, 30000, ecodes.EV_SYN, ecodes.SYN_REPORT, 0),
+        ],
+    )
+    errors = []
+    monitor = linux_input.DeviceMonitor([], recorder, lambda _: monitor._stop.set(), errors.append)
+    monitor._monotonic_fds = {1, 2}
+    monkeypatch.setattr(linux_input.select, "select", lambda *args: ([keyboard, mouse], [], []))
+    monitor._run([keyboard, mouse])
+    steps = recorder.stop()
+    assert not errors
+    assert [s.action for s in steps] == ["move", "key_down", "move", "key_up", "wait"]
+    assert [round(s.delay_ms) for s in steps[:4]] == [10, 10, 10, 10]
+
+
+def test_monitor_drains_full_evdev_batches_before_merging_newer_key_events(monkeypatch):
+    from moonlight_studio import linux_input
+
+    recorder = Recorder()
+    recorder.start(start_at=100)
+    packets = []
+    for index in range(1, 40):
+        packets.extend(
+            [
+                InputEvent(100, index * 1000, ecodes.EV_REL, ecodes.REL_X, 1),
+                InputEvent(100, index * 1000, ecodes.EV_SYN, ecodes.SYN_REPORT, 0),
+            ]
+        )
+
+    class Device:
+        def __init__(self, path, fd, batches):
+            self.path, self.fd, self.batches = path, fd, iter(batches)
+
+        def read(self):
+            return next(self.batches)
+
+        def close(self):
+            pass
+
+    mouse = Device("mouse", 2, [packets[:64], packets[64:]])
+    keyboard = Device(
+        "keyboard",
+        1,
+        [
+            [
+                InputEvent(100, 20000, ecodes.EV_KEY, ecodes.KEY_A, 1),
+                InputEvent(100, 40000, ecodes.EV_KEY, ecodes.KEY_A, 0),
+                InputEvent(100, 50000, ecodes.EV_KEY, ecodes.KEY_F12, 1),
+            ]
+        ],
+    )
+    errors = []
+    monitor = linux_input.DeviceMonitor([], recorder, lambda _: monitor._stop.set(), errors.append)
+    monitor._monotonic_fds = {1, 2}
+    monkeypatch.setattr(linux_input.select, "select", lambda *args: ([keyboard, mouse], [], []))
+    monitor._run([keyboard, mouse])
+    steps = recorder.stop()
+    assert not errors
+    assert sum(s.x for s in steps if s.action == "move") == 39
+    assert round(sum(s.delay_ms for s in steps[:-1])) == 40
+    assert round(steps[-2].delay_ms) == 1

@@ -205,3 +205,31 @@ class BackgroundBackend:
 
     def close(self):
         self.connection.close()
+
+
+class FocusGuard:
+    """Use actual X input focus, including child widgets; no focus/activation requests."""
+
+    def __init__(self, target):
+        self.target = target
+        self.connection = display.Display()
+
+    def check(self):
+        target = self.connection.create_resource_object("window", self.target.id)
+        if identity(self.connection, target) != (self.target.pid, self.target.wm_class):
+            raise RuntimeError("Selected window closed or its identity changed")
+        focus = self.connection.get_input_focus().focus
+        seen = set()
+        while hasattr(focus, "id") and focus.id not in seen:
+            if focus.id == target.id:
+                return
+            seen.add(focus.id)
+            if focus.id == self.connection.screen().root.id:
+                break
+            focus = focus.query_tree().parent
+        raise RuntimeError(
+            "Selected window lost focus. Focus it during the countdown and keep it active."
+        )
+
+    def close(self):
+        self.connection.close()

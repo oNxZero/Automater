@@ -138,12 +138,12 @@ the workspace, guided setup, searchable library and run/notes panels. `theme.py`
 and `widgets.py` share design tokens, original SVG icons and native controls.
 The main UI adopts Moonlight's visual family with a sidebar, spaced cards, a
 dedicated property inspector, clearer state indicators and a fixed transport bar.
-Large workflows render at most 60 cards per page. Version-1 script compatibility
+Large workflows now use one continuous canvas with viewport virtualization (v0.7). Version-1 script compatibility
 and input backends are retained. Conditional graphs and nested loops remain future work.
 
 Acceptance checks include edits to both halves of a key hold, preservation of raw
 mouse samples during grouped timing edits, atomic action reorder/undo, view-selection
-synchronization, insertion, page bounds, and read-only operation during playback.
+synchronization, insertion, viewport bounds, and read-only operation during playback.
 
 ## Technical references
 
@@ -187,7 +187,7 @@ Implemented:
   keys. Separate Press, Hold, Release, Timer, Click, Move and Scroll actions.
 - Fixed or minimum/maximum timing, sampled each event and each loop, plus undoable
   percentage variation for selected actions. Coordinate samples remain unchanged.
-- Ctrl/Shift multi-selection, Shift-drag box selection, cross-page selection,
+- Ctrl/Shift multi-selection, Shift-drag box selection, selection across the whole canvas,
   copy/cut/paste, duplicate, delete, group reorder, enable/disable and hold splitting.
   Keep raw Events selections precise and preserve clipboard timing/group metadata.
 - Horizontal, Vertical and Grid layouts with numbered execution order, zoom/fit,
@@ -238,3 +238,26 @@ state, highlights actual timers/holds/completed actions, retains last-loop resul
 per document and reports scheduler lateness. Mouse X/Y reports are kept together.
 Future work includes calibration/image feedback and real Sober/GPU compatibility
 validation. The private Xvfb test proves transport behavior, not game acceptance.
+
+
+## v0.7: fidelity and direct manipulation
+
+Implemented a continuous canvas with global action coordinates, viewport-based
+card/connector creation, selection retained offscreen, smooth camera follow and
+an explicit follow toggle. Dragging previews the proposed permutation without
+mutating events; origin markers, destination ghosts, Escape cancellation and edge
+scrolling support long routines. Drop still commits through the existing undo stack.
+
+The window picker searches live titles/app names. KDE's read-only KWin scripting
+API supplies native Wayland window identities and activation updates over a private
+callback on the session bus. The temporary script is unloaded on normal close.
+X11 discovery remains the fallback. Selected desktop windows receive focus checks;
+cleanup releases remain possible after focus loss. Existing-window background and
+separate-session routing retain distinct capabilities and failure behavior.
+
+Capture is armed against the recording deadline and merges ready device batches
+by kernel timestamp. Replay retains cumulative deadlines while protecting actual
+key/button transition intervals, including pause restoration. File dialog folders
+are consistent and persisted; tab labels come from saved filenames.
+
+- [KDE KWin scripting API](https://develop.kde.org/docs/plasma/kwin/api/)

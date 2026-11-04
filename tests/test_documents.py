@@ -13,18 +13,22 @@ def test_tabs_preserve_independent_edits_undo_and_run_settings(qtbot, tmp_path, 
     win.add_step(2)
     first = list(win.model.steps)
     win.speed.setValue(2)
+    win.workflow.follow_btn.setChecked(False)
     win.new_script()
     win.name.setText("Second")
     win.add_step(2)
     second = list(win.model.steps)
     win.speed.setValue(3)
+    win.workflow.follow_btn.setChecked(True)
     assert win.document_tabs.count() == 2
     win.document_tabs.setCurrentIndex(0)
     assert win.name.text() == "First" and win.model.steps == first and win.speed.value() == 2
+    assert not win.workflow.follow_btn.isChecked()
     win.undo.undo()
     assert win.model.steps == original
     win.document_tabs.setCurrentIndex(1)
     assert win.name.text() == "Second" and win.model.steps == second and win.speed.value() == 3
+    assert win.workflow.follow_btn.isChecked()
     win.undo.undo()
     assert win.model.steps == []
     win.undo.redo()

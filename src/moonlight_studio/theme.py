@@ -84,7 +84,7 @@ STYLE = """
 QWidget { color: #e2e5f4; font-family: 'Inter', 'Noto Sans', sans-serif; font-size: 13px; }
 QTabBar { background: transparent; }
 QTabBar::tab { background: #171b29; color: #9199b3; border: 1px solid #2d3248;
-    border-radius: 7px; padding: 8px 14px; margin-right: 5px; min-width: 90px; max-width: 240px; }
+    border-radius: 7px; padding: 8px 14px; padding-right: 24px; margin-right: 5px; min-width: 90px; max-width: 240px; }
 QTabBar::tab:selected { background: #302b47; color: #e2e5f4; border-color: #5a4b83; }
 QTabBar::tab:hover { background: #25283b; }
 QMainWindow, QWidget#app { background: #11131e; }
@@ -173,7 +173,8 @@ QProgressBar::chunk { background: #b5a4fa; border-radius: 2px; }
 """
 
 STYLE += """
-QTabBar::close-button { image: url("@ASSETS@/close.svg"); width: 12px; height: 12px; padding: 3px; }
+QTabBar::close-button { image: url("@ASSETS@/close.svg"); width: 14px; height: 14px;
+    padding: 0; }
 QComboBox::down-arrow { image: url("@ASSETS@/chevron-down.svg"); width: 12px; height: 12px; }
 QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image: url("@ASSETS@/chevron-up.svg"); width: 12px; height: 12px; }
 QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: url("@ASSETS@/chevron-down.svg"); width: 12px; height: 12px; }

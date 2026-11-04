@@ -171,3 +171,87 @@ def test_pause_restores_modifiers_before_other_held_keys():
     assert [s.code for s in backend.events[4:6]] == ["KEY_LEFTSHIFT", "KEY_A"]
     replay.stop()
     assert replay.join()
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 100.0
+
+    def __call__(self):
+        return self.now
+
+
+class ScheduledReplay(Replay):
+    """Deterministic scheduler wakeup overshoot; no operating-system timing assumptions."""
+
+    def _wait(self, deadline, backend, held):
+        self.clock.now = max(self.clock.now, deadline + 0.0001)
+        return deadline
+
+
+def test_mouse_report_schedule_does_not_accumulate_wakeup_or_dispatch_cost():
+    clock = FakeClock()
+    backend = Backend()
+    stamps = []
+
+    def send(step):
+        stamps.append(clock())
+        clock.now += 0.0002
+
+    backend.send = send
+    replay = ScheduledReplay(lambda: backend, clock=clock)
+    replay.start(
+        Script(steps=[Step(1, "move", x=1) for _ in range(1000)]), PlaybackOptions(countdown=0)
+    )
+    assert replay.join()
+    assert stamps[-1] - stamps[0] == pytest.approx(0.999, abs=0.00001)
+    assert replay.timeline["actual_loop_seconds"] == pytest.approx(1.0003, abs=0.00001)
+    assert backend.closed
+
+
+def test_late_key_and_mouse_presses_keep_their_recorded_hold_duration():
+    for code in ("KEY_A", "BTN_LEFT"):
+        clock = FakeClock()
+        backend = Backend()
+        stamps = []
+
+        def send(step):
+            stamps.append((step.action, clock()))
+            if step.action == "key_down":
+                clock.now += 0.04  # Slow dispatch must not consume the requested hold.
+
+        backend.send = send
+        replay = ScheduledReplay(lambda: backend, clock=clock)
+        replay.start(
+            Script(steps=[Step(0, "key_down", code), Step(10, "key_up", code)]),
+            PlaybackOptions(countdown=0),
+        )
+        assert replay.join()
+        assert stamps[1][1] - stamps[0][1] >= 0.05
+        assert replay.timeline["max_lateness_ms"] >= 40
+
+
+def test_delayed_release_does_not_collapse_gap_before_next_press():
+    clock = FakeClock()
+    backend = Backend()
+    stamps = []
+
+    def send(step):
+        stamps.append((step.action, clock()))
+        clock.now += 0.04
+
+    backend.send = send
+    replay = ScheduledReplay(lambda: backend, clock=clock)
+    replay.start(
+        Script(
+            steps=[
+                Step(0, "key_down", "KEY_A"),
+                Step(10, "key_up", "KEY_A"),
+                Step(20, "key_down", "KEY_A"),
+                Step(10, "key_up", "KEY_A"),
+            ]
+        ),
+        PlaybackOptions(countdown=0),
+    )
+    assert replay.join()
+    assert stamps[2][1] - stamps[1][1] >= 0.06

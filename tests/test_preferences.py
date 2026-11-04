@@ -30,6 +30,9 @@ def test_preferences_round_trip_and_private_file(tmp_path):
         {"device_ids": [1]},
         {"append_recording": "yes"},
         {"capture_keys": None},
+        {"script_directory": "relative/folder"},
+        {"script_directory": True},
+        {"script_directory": "/invalid\x00folder"},
     ],
 )
 def test_invalid_preferences_rejected(tmp_path, fields):

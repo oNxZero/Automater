@@ -45,7 +45,8 @@ class PlaybackOptions:
 
 
 class Replay:
-    def __init__(self, backend_factory, notify=lambda *args: None, rng=None):
+    def __init__(self, backend_factory, notify=lambda *args: None, rng=None, clock=None):
+        self.clock = clock or time.monotonic
         self.backend_factory = backend_factory
         self.notify = notify
         self.rng = rng if rng is not None else random.Random()
@@ -65,7 +66,7 @@ class Replay:
         with self._timeline_lock:
             if phase is not None:
                 values.update(phase=phase)
-                values.setdefault("phase_started", time.monotonic())
+                values.setdefault("phase_started", self.clock())
             self._timeline.update(values)
 
     @property
@@ -96,7 +97,7 @@ class Replay:
         self._stop = self._paused = False
         self._timeline = {
             "phase": "preparing",
-            "phase_started": time.monotonic(),
+            "phase_started": self.clock(),
             "deadline": None,
             "active_row": -1,
             "last_sent_row": -1,
@@ -138,7 +139,7 @@ class Replay:
         with self._condition:
             while not self._stop:
                 if self._paused:
-                    started = time.monotonic()
+                    started = self.clock()
                     before_pause = self.timeline
                     self._release(backend, held)
                     partial = max(
@@ -152,21 +153,27 @@ class Replay:
                     self.notify("state", "Paused • held inputs released")
                     while self._paused and not self._stop:
                         self._condition.wait(0.05)
-                    paused_for = time.monotonic() - started
-                    deadline += paused_for
-                    self._publish(paused_seconds=self.timeline["paused_seconds"] + paused_for)
+                    try:
+                        if not self._stop:
+                            backend.check()
+                            for code in sorted(
+                                held, key=lambda code: (code not in MODIFIER_KEYS, code)
+                            ):
+                                backend.send(Step(0, "key_down", code))
+                    finally:
+                        # Restoring a slow destination is part of the pause too.
+                        paused_for = self.clock() - started
+                        deadline += paused_for
+                        self._publish(paused_seconds=self.timeline["paused_seconds"] + paused_for)
                     if self._stop:
                         return None
-                    backend.check()
-                    for code in sorted(held, key=lambda code: (code not in MODIFIER_KEYS, code)):
-                        backend.send(Step(0, "key_down", code))
                     self.notify("state", "Playing")
                     self._publish(
                         before_pause["phase"],
                         deadline=deadline,
                         phase_started=before_pause["phase_started"] + paused_for,
                     )
-                remaining = deadline - time.monotonic()
+                remaining = deadline - self.clock()
                 if remaining <= 0:
                     return deadline
                 self._condition.wait(min(remaining, 0.05))
@@ -201,7 +208,7 @@ class Replay:
             lead_in = max(options.countdown, getattr(backend, "startup_delay", 0))
             self.notify("state", f"Starting in {lead_in:g}s…")
             # Targets need only be focused when the countdown finishes.
-            countdown_start = time.monotonic()
+            countdown_start = self.clock()
             countdown_end = countdown_start + lead_in
             self._publish("countdown", deadline=countdown_end, wait_duration=lead_in)
             self.notify("countdown", {"duration": lead_in, "deadline": countdown_end})
@@ -226,6 +233,7 @@ class Replay:
                         )
                 total = sum(duration for _, _, duration in scheduled)
                 elapsed, completed = 0.0, 0
+                transitions = {}
                 self._publish(
                     "positioning" if options.start_position is not None else "running",
                     loop=loop,
@@ -252,29 +260,42 @@ class Replay:
                         "state",
                         f"Loop {loop} · starting at {options.start_position[0]}, {options.start_position[1]}",
                     )
-                    settle_end = time.monotonic() + options.start_settle
+                    settle_end = self.clock() + options.start_settle
                     self._publish(
                         "settling", deadline=settle_end, wait_duration=options.start_settle
                     )
                     deadline = self._wait(settle_end, backend, held)
                     if deadline is None:
                         return
+                # Scheduling/preflight work must not consume the first action's delay.
+                deadline = self.clock()
                 for index, step, duration in scheduled:
                     if completed == 0:
-                        self._publish(loop_started=time.monotonic(), paused_seconds=0.0)
-                    deadline += duration
+                        self._publish(loop_started=deadline, paused_seconds=0.0)
+                    nominal_deadline = deadline + duration
+                    dispatch_deadline = nominal_deadline
+                    if step.action in ("key_down", "key_up") and step.code in transitions:
+                        pressed_at, logical_at, paused_at = transitions[step.code]
+                        requested_hold = max(0, elapsed + duration - logical_at)
+                        dispatch_deadline = max(
+                            nominal_deadline,
+                            pressed_at
+                            + requested_hold
+                            + self.timeline["paused_seconds"]
+                            - paused_at,
+                        )
                     activity = {"last_activity_row": index} if step.action == "wait" else {}
                     self._publish(
                         "timer" if step.action == "wait" else "delay",
                         active_row=index if step.action == "wait" else -1,
                         next_row=index,
-                        deadline=deadline,
-                        wait_duration=duration,
+                        deadline=dispatch_deadline,
+                        wait_duration=max(0, dispatch_deadline - self.clock()),
                         loop_elapsed=elapsed,
                     )
                     if activity:
                         self._publish(**activity)
-                    now = time.monotonic()
+                    now = self.clock()
                     if (
                         duration >= 0.05
                         or now - last_wait_report >= 1 / 30
@@ -282,20 +303,26 @@ class Replay:
                     ):
                         self.notify("waiting", (index, loop, duration))
                         last_wait_report = now
-                    deadline = self._wait(deadline, backend, held)
-                    if deadline is None:
+                    waited_until = self._wait(dispatch_deadline, backend, held)
+                    if waited_until is None:
                         return
+                    # Only pauses shift the recorded timeline. Scheduler overshoot and
+                    # per-event dispatch costs must not accumulate across mouse reports.
+                    deadline = nominal_deadline + (waited_until - dispatch_deadline)
                     backend.check()
                     failed_row = index
-                    sent_at = time.monotonic()
+                    sent_at = self.clock()
                     lateness = max(0.0, (sent_at - deadline) * 1000)
                     if step.action == "key_down":
                         held.add(step.code)  # Track before send, including partially failed sends.
                         held_rows[step.code] = index
                     backend.send(step)
-                    # Honor delays from actual dispatch; do not burst overdue events
-                    # together after a slow send, pause or stalled destination.
-                    deadline = max(deadline, sent_at)
+                    if step.action in ("key_down", "key_up"):
+                        transitions[step.code] = (
+                            self.clock(),
+                            elapsed + duration,
+                            self.timeline["paused_seconds"],
+                        )
                     if step.action == "key_up":
                         held.discard(step.code)
                         held_rows.pop(step.code, None)
@@ -316,18 +343,18 @@ class Replay:
                     )
                     failed_row = -1
                     # High polling-rate mice and zero-delay scripts must not flood Qt.
-                    now = time.monotonic()
+                    now = self.clock()
                     if now - last_progress >= 1 / 30 or index == len(script.steps) - 1:
                         self.notify("progress", (index, loop))
                         last_progress = now
                 self._release(backend, held)
                 held.clear()
                 held_rows.clear()
-                self._publish(loop_finished_at=time.monotonic())
+                self._publish(loop_finished_at=self.clock())
                 if options.repeats == 0 or loop < options.repeats:
                     # Enforce a minimum gap so an empty loop cannot spin the CPU.
                     gap = max(options.loop_gap, 0.01)
-                    gap_end = time.monotonic() + gap
+                    gap_end = self.clock() + gap
                     self._publish("loop_gap", active_row=-1, deadline=gap_end, wait_duration=gap)
                     deadline = self._wait(gap_end, backend, held)
                     if deadline is None:
@@ -365,8 +392,7 @@ class Replay:
                         0,
                         min(
                             current["wait_duration"],
-                            current["wait_duration"]
-                            - max(0, current["deadline"] - time.monotonic()),
+                            current["wait_duration"] - max(0, current["deadline"] - self.clock()),
                         ),
                     )
                     if current["phase"] in ("delay", "timer")
@@ -380,7 +406,7 @@ class Replay:
                 partial_wait_seconds=partial,
                 actual_loop_seconds=max(
                     0,
-                    (current.get("loop_finished_at") or time.monotonic())
+                    (current.get("loop_finished_at") or self.clock())
                     - current["loop_started"]
                     - current["paused_seconds"],
                 )

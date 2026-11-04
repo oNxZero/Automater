@@ -120,7 +120,7 @@ class Recorder:
         self.held = set()
         self.keyboard = self.mouse = self.motion = True
 
-    def start(self, keyboard=True, mouse=True, motion=True, limit=MAX_STEPS):
+    def start(self, keyboard=True, mouse=True, motion=True, limit=MAX_STEPS, start_at=None):
         with self._lock:
             if type(limit) is not int or not len(KEY_CODES) + 1 < limit <= MAX_STEPS:
                 raise ValueError("Not enough space for a recording; start a new workflow.")
@@ -129,7 +129,7 @@ class Recorder:
             self._sources = set()
             self._pending = None
             self.keyboard, self.mouse, self.motion = keyboard, mouse, motion
-            self._last = time.monotonic()
+            self._last = time.monotonic() if start_at is None else start_at
             self._started = self._last
             self.active = True
 
@@ -305,6 +305,26 @@ class DeviceMonitor:
                 device.close()
             raise
 
+    def read_ready(self, device):
+        events = []
+        # evdev's native read_many returns at most 64 events. Drain a ready
+        # device before merging: a single read can leave older reports behind.
+        while not self._stop.is_set():
+            try:
+                batch = list(device.read())
+            except BlockingIOError:
+                break
+            if not batch:
+                if not events:
+                    raise RuntimeError("Input device closed. Refresh the device list to reconnect.")
+                break
+            events.extend(batch)
+            if len(batch) < 64:
+                break
+            if len(events) >= 8192:
+                raise RuntimeError("Input backlog is too large. Recording stopped; try again.")
+        return events
+
     def _run(self, opened=None):
         opened = opened or []
         try:
@@ -315,33 +335,32 @@ class DeviceMonitor:
                     ready, _, _ = select.select(opened, [], [], 0.1)
                 except InterruptedError:
                     continue
+                # Read all ready devices before dispatch. Kernel timestamps preserve
+                # mouse/keyboard ordering even when select returns the keyboard first.
+                pending = []
                 for device in ready:
-                    try:
-                        batch = list(device.read())
-                    except BlockingIOError:
-                        continue
-                    if not batch:
-                        raise RuntimeError(
-                            "Input device closed. Refresh the device list to reconnect."
-                        )
+                    batch = self.read_ready(device)
+                    offset = (
+                        0
+                        if getattr(device, "fd", None) in self._monotonic_fds
+                        else self._realtime_offset
+                    )
                     for event in batch:
-                        if self._stop.is_set():
-                            return
                         if event.type == ecodes.EV_SYN and event.code == ecodes.SYN_DROPPED:
                             raise RuntimeError(
                                 "Input events were dropped. Recording stopped; try again."
                             )
-                        if event.type == ecodes.EV_KEY and event.code in HOTKEYS:
-                            if event.value == 1:
-                                self.hotkey(HOTKEYS[event.code])
-                            continue
-                        self.recorder.feed(
-                            event,
-                            source=device.path,
-                            occurred_at=event.timestamp()
-                            if getattr(device, "fd", None) in self._monotonic_fds
-                            else event.timestamp() + self._realtime_offset,
-                        )
+                        pending.append((event.timestamp() + offset, device.path, event))
+                # Stable sorting retains event/report order within each device.
+                pending.sort(key=lambda item: item[0])
+                for occurred_at, source, event in pending:
+                    if self._stop.is_set():
+                        return
+                    if event.type == ecodes.EV_KEY and event.code in HOTKEYS:
+                        if event.value == 1:
+                            self.hotkey(HOTKEYS[event.code])
+                        continue
+                    self.recorder.feed(event, source=source, occurred_at=occurred_at)
         except Exception as exc:
             self.error(str(exc))
         finally:

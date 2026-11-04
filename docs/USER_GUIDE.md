@@ -59,9 +59,14 @@ events can create unbalanced holds; the existing replay warning and cleanup appl
 
 Mouse wheel pans horizontally. Left-drag empty canvas space to box-select; middle-drag pans in either direction.
 Ctrl + wheel zooms; the bottom controls zoom in/out or fit. Zoom is bounded so a
-long sequence does not turn into unreadable dots. Workflows over 60 actions are
-paged. Previous and Next move through those pages. Playback follows the active
-page automatically. The underlying event list remains complete.
+long sequence does not turn into unreadable dots. All actions live on one continuous
+canvas; scroll to reach any action. Large routines create graphics only near the
+visible area, keeping every event and selection intact. **Follow playback** smoothly
+moves the camera toward the running action; turn it off to inspect another area.
+
+When dragging, a dashed marker shows the original position. A translucent card and
+shifted neighbours preview the new order. Hover near an edge to scroll farther.
+Release to commit one undoable move, or press Escape to cancel.
 
 ## Set up playback
 
@@ -78,6 +83,22 @@ Click **Settings**, or select **Run** in the inspector.
 | Start tab → Countdown | Time to switch to your destination before playback or recording starts. |
 | Loop gap | Pause between cycles; the engine uses a minimum 10 ms gap. |
 | Test mode | Highlight the real replay sequence without emitting input. |
+
+Click **Choose open window** to search your currently open games and applications;
+there is no file browser. On KDE Plasma this includes native Wayland windows.
+Other desktops currently expose X11/Xwayland windows only. Refresh after opening
+an app. A closed selected desktop window remains marked unavailable until you
+choose another window; it does not silently become unrestricted desktop playback.
+
+For **Active desktop**, selecting a window requires it to stay focused; switching
+away stops the script and releases held inputs. This still moves your normal
+pointer. Use **Use any active window** in the picker to remove that focus check.
+**Existing window · X11** sends best-effort background messages. For a native
+Wayland window, the picker explicitly offers **Use on active desktop** instead.
+**Separate game session** lists only windows inside the game display you launched;
+use that advanced mode for independent mouse/keyboard input in supported games.
+
+![Search currently open apps](window-picker.png)
 
 The estimate includes enabled events, speed, countdown, repetitions and loop gaps.
 Desktop replay allows at least 0.5 s for its new virtual device to register.
@@ -173,8 +194,8 @@ context menu's **Use fixed timing** removes ranges and keeps their minimum value
 ## Selection and clipboard
 
 Ctrl-click toggles a card. Shift-click selects a range. Left-drag from empty canvas
-box-selects; middle-drag pans. Ctrl+A selects every action, including other pages. Page navigation
-keeps your selection. Copy/cut/paste and duplicate act in original sequence order;
+box-selects; middle-drag pans. Ctrl+A selects every action, including those offscreen.
+Scrolling keeps your selection. Copy/cut/paste and duplicate act in original sequence order;
 paste inserts after the last selected event, or at the end if nothing is selected.
 Clipboard data is bounded, validated JSON and includes all original samples/ranges.
 It does not include the workflow's starting-point configuration.
@@ -289,3 +310,22 @@ exclude countdown/reset/gap and paused time from actual loop duration. Edits or 
 new run clear old markers; switching tabs preserves each tab's latest result.
 
 ![Last run markers](run-results.png)
+
+## When recording and playback differ
+
+Use speed **1×**, fixed timings, the same game bindings/sensitivity and a consistent
+starting position/camera. Relative mouse counts are preserved; desktop acceleration,
+scaling, a virtual mouse's settings and the game's input/frame handling can change
+the visible path. A starting cursor coordinate does not reset a game's camera or
+character state. Start with a short harmless routine and inspect **Edit → Last
+playback details** for missed deadlines or a failed action.
+
+Replay maintains the recorded cumulative schedule and protects hold/release
+intervals against late sends. Recording uses kernel timestamps across ready devices
+and accepts events at the actual countdown deadline even if the UI is busy. These
+fixes reduce internal drift; they cannot confirm that a game accepted every event.
+New recordings benefit from capture fixes; existing JSON timings are kept unchanged.
+
+Saved tab labels use the filename without `.json`. Open and Save As start in the
+active file's folder, otherwise the last used folder, otherwise the workflow library.
+The editable workflow title inside a JSON file remains independent of its filename.

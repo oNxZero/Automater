@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QSplitter,
     QStackedWidget,
-    QTabBar,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -30,7 +29,7 @@ from PySide6.QtWidgets import (
 from .editor import EventTable, StepDelegate
 from .inspector import ActionInspector
 from .theme import ACCENT, icon
-from .widgets import button, label
+from .widgets import WorkflowTabBar, button, label
 from .workflow import Workflow
 
 
@@ -131,12 +130,15 @@ def build_ui(w):
     w.save_btn = button("Save", w.save_script, "", "Save workflow · Ctrl+S", "save")
     top.addWidget(w.save_btn)
     body.addLayout(top)
-    tabs = QHBoxLayout()
-    w.document_tabs = QTabBar()
+    w.workflow_tabs = QWidget()
+    tabs = QHBoxLayout(w.workflow_tabs)
+    tabs.setContentsMargins(0, 0, 0, 0)
+    w.document_tabs = WorkflowTabBar()
     w.document_tabs.setTabsClosable(True)
     w.document_tabs.setMovable(True)
     w.document_tabs.setExpanding(False)
     w.document_tabs.setDrawBase(False)
+    w.document_tabs.setElideMode(Qt.ElideRight)
     w.document_tabs.setUsesScrollButtons(True)
     w.document_tabs.setAccessibleName("Open workflows")
     w.document_tabs.currentChanged.connect(w.activate_document)
@@ -144,7 +146,6 @@ def build_ui(w):
     tabs.addWidget(w.document_tabs, 1)
     w.new_tab_btn = button("", w.new_script, "ghost", "New workflow tab · Ctrl+T", "plus")
     tabs.addWidget(w.new_tab_btn)
-    body.addLayout(tabs)
     w.workspace_header = QWidget()
     w.title_row = QHBoxLayout(w.workspace_header)
     w.title_row.setContentsMargins(0, 8, 0, 4)
@@ -200,6 +201,7 @@ def build_ui(w):
     workspace_layout = QVBoxLayout(workspace)
     workspace_layout.setContentsMargins(0, 0, 0, 0)
     workspace_layout.setSpacing(12)
+    workspace_layout.addWidget(w.workflow_tabs)
     toolbar = w.title_row
     w.undo_btn = button("", w.undo.undo, "ghost", "Undo · Ctrl+Z", "undo")
     w.redo_btn = button("", w.undo.redo, "ghost", "Redo · Ctrl+Shift+Z", "redo")
@@ -395,7 +397,7 @@ def build_run_settings(w):
     w.target.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
     w.target.currentIndexChanged.connect(w.update_run_summary)
     layout.addWidget(w.target)
-    w.refresh_target_btn = button("Refresh windows", w.refresh_windows, "ghost", glyph="refresh")
+    w.refresh_target_btn = button("Choose open window…", w.choose_open_window, glyph="target")
     layout.addWidget(w.refresh_target_btn)
     w.routing_hint = label("")
     layout.addWidget(w.routing_hint)
@@ -413,11 +415,16 @@ def build_run_settings(w):
     session.addWidget(label("Separate game session", "heading"))
     session.addWidget(
         label(
-            "Launch your game with its own virtual mouse and keyboard. Close an existing Sober instance first. Closing Studio leaves the game open."
+            "Advanced: launch a new game instance with independent mouse and keyboard. To use a game that is already open, choose Active desktop or Existing window in Run settings instead. Closing Studio leaves the game open."
         )
     )
     compact_session.addWidget(
         button("Set up game session…", lambda: w.session_dialog.show(), glyph="target")
+    )
+    session.addWidget(
+        button(
+            "Use an already open window…", w.choose_existing_desktop_window, "ghost", glyph="target"
+        )
     )
     w.session_app = QComboBox()
     w.session_app.addItems(["Sober · Flatpak", "Custom application"])

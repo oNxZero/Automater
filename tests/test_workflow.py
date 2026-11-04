@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from test_gui import clean, window
 
 from moonlight_studio.models import Script, Step
-from moonlight_studio.workflow import PAGE_SIZE, blocks_for
+from moonlight_studio.workflow import VIRTUALIZE_AFTER, blocks_for
 
 
 def test_grouping_retains_events_timing_and_enabled_boundaries():
@@ -90,16 +90,22 @@ def test_duplicate_disable_and_delete_workflow_action(qtbot, tmp_path, monkeypat
 
 def test_large_recording_has_bounded_canvas_and_retains_raw_samples(qtbot, tmp_path, monkeypatch):
     win = window(qtbot, tmp_path, monkeypatch)
-    steps = [Step(1, "move", x=1) for _ in range(10_000)] + [Step(50) for _ in range(130)]
+    steps = [Step(1, "move", x=1) for _ in range(10_000)] + [Step(50) for _ in range(10_000)]
     win.load_script(Script("Long recording", steps=steps))
-    assert len(win.blocks) == 131
-    assert len(win.workflow.canvas.nodes) == PAGE_SIZE
+    qtbot.wait(20)
+    assert len(win.blocks) == 10_001
+    canvas = win.workflow.canvas
+    assert len(canvas.nodes) < VIRTUALIZE_AFTER
     assert win.model.steps == steps
-    win.workflow.change_page(1)
-    assert min(win.workflow.canvas.nodes) == PAGE_SIZE
-    win.workflow.canvas.highlight(len(steps) - 1)
-    assert win.workflow.canvas.page == 2
-    assert len(win.workflow.canvas.nodes) == 11
+    first = canvas.node_position(0)
+    canvas.reveal_index(5000)
+    assert 5000 in canvas.nodes and 0 not in canvas.nodes
+    assert canvas.node_position(0) == first
+    assert len(canvas.nodes) < VIRTUALIZE_AFTER
+    canvas.highlight(len(steps) - 1)
+    qtbot.wait(350)
+    assert 10000 in canvas.nodes
+    assert len(canvas.nodes) < VIRTUALIZE_AFTER
     clean(win)
 
 
@@ -174,4 +180,55 @@ def test_drag_card_reorders_the_source_events(qtbot, tmp_path, monkeypatch):
     assert win.model.steps == original[2:3] + original[:2] + original[3:]
     win.undo.undo()
     assert win.model.steps == original
+    clean(win)
+
+
+def test_drag_hover_previews_order_without_changing_events_and_cancel_restores(
+    qtbot, tmp_path, monkeypatch
+):
+    from PySide6.QtCore import QPointF
+
+    win = window(qtbot, tmp_path, monkeypatch)
+    win.load_controls_example()
+    qtbot.wait(20)
+    canvas = win.workflow.canvas
+    before = list(win.model.steps)
+    canvas.choose_indices({0, 2})
+    origin = canvas.node_position(0) + QPointF(50, 50)
+    destination = origin + canvas.node_position(5) - canvas.node_position(0)
+    canvas.preview_drag(0, origin, destination)
+    assert canvas.drag_state["target"] == 5
+    assert canvas.drag_state["mapping"][0] == 4
+    assert canvas.drag_state["mapping"][2] == 5
+    assert len(canvas.drag_items) == 2
+    assert canvas.drag_preview_items
+    assert win.model.steps == before
+    canvas.finish_drag(cancel=True)
+    assert canvas.selected_indices == {0, 2}
+    assert all(node.pos() == canvas.node_position(i) for i, node in canvas.nodes.items())
+    assert win.model.steps == before
+    assert canvas.drag_state is None and not canvas.drag_items
+    clean(win)
+
+
+def test_playback_camera_has_intermediate_positions_and_can_be_disabled(
+    qtbot, tmp_path, monkeypatch
+):
+    win = window(qtbot, tmp_path, monkeypatch)
+    win.load_controls_example()
+    qtbot.wait(20)
+    canvas = win.workflow.canvas
+    canvas.resetTransform()
+    canvas.reveal_index(0)
+    initial = canvas.horizontalScrollBar().value()
+    canvas.follow_index(5)
+    assert abs(canvas.horizontalScrollBar().value() - initial) <= 2
+    canvas.camera.setCurrentTime(120)
+    middle = canvas.horizontalScrollBar().value()
+    canvas.camera.setCurrentTime(280)
+    final = canvas.horizontalScrollBar().value()
+    assert initial < middle < final
+    win.workflow.follow_btn.setChecked(False)
+    canvas.follow_index(0)
+    assert canvas.horizontalScrollBar().value() == final
     clean(win)

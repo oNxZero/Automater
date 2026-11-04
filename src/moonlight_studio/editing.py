@@ -19,7 +19,7 @@ from .actions import (
 )
 from .models import MAX_STEPS
 from .theme import icon
-from .workflow import PAGE_SIZE, blocks_for
+from .workflow import blocks_for
 
 
 class EditingMixin:
@@ -437,11 +437,7 @@ class EditingMixin:
                     canvas.anchor = target
                     indices = {target}
                 canvas.choose_indices(indices)
-                if target // PAGE_SIZE != canvas.page:
-                    canvas.page = target // PAGE_SIZE
-                    canvas.render_page()
-                if target in canvas.nodes:
-                    canvas.ensureVisible(canvas.nodes[target], 40, 40)
+                canvas.reveal_index(target)
                 self.workflow.update_footer()
         except (ValueError, TypeError) as exc:
             self.show_error(str(exc))

@@ -1,7 +1,32 @@
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QLabel, QPushButton
+from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtWidgets import QLabel, QPushButton, QTabBar
 
 from .theme import icon
+
+
+class WorkflowTabBar(QTabBar):
+    """Inset native close widgets inside the painted tab, including its gap."""
+
+    def tabLayoutChange(self):
+        super().tabLayoutChange()
+        if not getattr(self, "_close_layout_pending", False):
+            self._close_layout_pending = True
+            QTimer.singleShot(0, self, self.place_close_buttons)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.place_close_buttons()
+
+    def place_close_buttons(self):
+        self._close_layout_pending = False
+        for index in range(self.count()):
+            button = self.tabButton(index, QTabBar.RightSide)
+            if button is not None:
+                rect = self.tabRect(index)
+                button.move(
+                    rect.right() - 5 - 8 - button.width() + 1,
+                    rect.top() + (rect.height() - button.height()) // 2,
+                )
 
 
 def button(text, callback, name="", tip="", glyph=None):

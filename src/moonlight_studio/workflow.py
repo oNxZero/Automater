@@ -1,4 +1,4 @@
-"""A bounded, interactive left-to-right view of the existing linear script."""
+"""Continuous workflow canvas with viewport virtualization and smooth playback follow."""
 
 import math
 from bisect import bisect_right
@@ -23,8 +23,9 @@ from PySide6.QtWidgets import (
 from .editor import editing_command
 from .run_feedback import block_state
 from .theme import COLORS, MUTED, TEXT, font, icon
+from .workflow_drag import WorkflowDragMixin
 
-PAGE_SIZE = 60
+VIRTUALIZE_AFTER = 160
 CARD_WIDTH, CARD_HEIGHT, PITCH = 204, 144, 260
 
 
@@ -143,7 +144,7 @@ class Node(QGraphicsObject):
         self.animation.setEasingCurve(QEasingCurve.OutCubic)
         self.animation.valueChanged.connect(self.animate_emphasis)
         self.setToolTip(
-            f"{block.title}\nEvents {block.start + 1}–{block.end}\nClick to edit · drag horizontally to reorder"
+            f"{block.title}\nEvents {block.start + 1}–{block.end}\nClick to edit · drag to preview a new position"
         )
 
     def boundingRect(self):
@@ -198,7 +199,7 @@ class Node(QGraphicsObject):
         painter.drawText(
             QRectF(58, 17, 126, 28),
             Qt.AlignVCenter | Qt.AlignRight,
-            f"{self.index + 1:02d}  ·  {self.execution_state.upper() if self.execution_state else 'SKIPPED' if not self.block.enabled else self.block.kind.upper()}",
+            f"{getattr(self, 'preview_index', self.index) + 1:02d}  ·  {self.execution_state.upper() if self.execution_state else 'SKIPPED' if not self.block.enabled else self.block.kind.upper()}",
         )
         painter.setFont(font(11, True))
         painter.setPen(QColor(TEXT))
@@ -240,7 +241,9 @@ class Node(QGraphicsObject):
     def transition(self):
         self.animation.stop()
         self.animation.setStartValue(self.emphasis)
-        self.animation.setEndValue(1.0 if self.hovered or self.isSelected() else 0.0)
+        self.animation.setEndValue(
+            1.0 if self.hovered or self.isSelected() or self.playing else 0.0
+        )
         self.animation.start()
 
     def animate_emphasis(self, value):
@@ -273,26 +276,14 @@ class Node(QGraphicsObject):
     def mouseMoveEvent(self, event):
         delta = event.scenePos() - self.origin
         if abs(delta.x()) + abs(delta.y()) > 10:
-            for index, origin in self.drag_origins.items():
-                self.canvas.nodes[index].setPos(origin + delta)
-                self.canvas.nodes[index].setZValue(2)
+            self.canvas.preview_drag(self.index, self.origin, event.scenePos())
         event.accept()
 
     def mouseReleaseEvent(self, event):
-        delta = event.scenePos() - self.origin
-        for index, origin in self.drag_origins.items():
-            if index in self.canvas.nodes:
-                self.canvas.nodes[index].setPos(origin)
-                self.canvas.nodes[index].setZValue(0)
+        target = self.canvas.finish_drag()
         event.accept()
-        if abs(delta.x()) + abs(delta.y()) > 60 and self.canvas.nodes:
-            destination = self.canvas.node_position(self.index) + delta
-            target = min(
-                self.canvas.nodes,
-                key=lambda i: (self.canvas.node_position(i) - destination).manhattanLength(),
-            )
-            if target != self.index:
-                self.canvas.reorderRequested.emit(self.index, target)
+        if target is not None:
+            self.canvas.reorderRequested.emit(self.index, target)
         elif self.collapse_on_click:
             self.canvas.choose_indices({self.index})
 
@@ -321,6 +312,26 @@ class Node(QGraphicsObject):
                 lambda checked=False, name=action: self.canvas.command.emit(name)
             )
         menu.exec(event.screenPos())
+
+
+class OriginMarker(QGraphicsObject):
+    def __init__(self, title):
+        super().__init__()
+        self.title = title
+        self.setAcceptedMouseButtons(Qt.NoButton)
+        self.setZValue(1.5)
+
+    def boundingRect(self):
+        return QRectF(-2, -26, CARD_WIDTH + 4, CARD_HEIGHT + 28)
+
+    def paint(self, painter, option, widget=None):
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(QColor("#8f84b3"), 1.5, Qt.DashLine))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(QRectF(0, 0, CARD_WIDTH, CARD_HEIGHT), 12, 12)
+        painter.setFont(font(8, True))
+        painter.setPen(QColor("#c4b3ef"))
+        painter.drawText(QRectF(0, -26, CARD_WIDTH, 24), Qt.AlignCenter, "Original position")
 
 
 class InsertPoint(QGraphicsObject):
@@ -372,7 +383,7 @@ class StartPoint(QGraphicsObject):
         event.accept()
 
 
-class Canvas(QGraphicsView):
+class Canvas(WorkflowDragMixin, QGraphicsView):
     selected = Signal(object)
     insertRequested = Signal(int)
     reorderRequested = Signal(int, int)
@@ -397,12 +408,29 @@ class Canvas(QGraphicsView):
         self.blocks, self.starts, self.nodes = [], [], {}
         self.selected_indices = set()
         self.anchor = None
-        self.page = 0
+        self._rendering = False
+        self._render_queued = False
+        self.decorations = {}
+        self.start_marker = None
+        self.drag_state = None
+        self.drag_items = []
+        self.drag_preview_items = []
+        self.drag_scroll = QTimer(self)
+        self.drag_scroll.setInterval(16)
+        self.drag_scroll.timeout.connect(self.scroll_drag)
+        self.follow_enabled = True
+        self.follow_target = None
+        self.camera = QVariantAnimation(self)
+        self.camera.setDuration(280)
+        self.camera.setEasingCurve(QEasingCurve.OutCubic)
+        self.camera.valueChanged.connect(self.centerOn)
         self.layout_mode = "horizontal"
         self.start_label = "START"
         self.execution_states = {}
         self.execution_trace = None
         self.scene().selectionChanged.connect(self.selection_changed)
+        self.horizontalScrollBar().valueChanged.connect(self.queue_visible_nodes)
+        self.verticalScrollBar().valueChanged.connect(self.queue_visible_nodes)
 
     def drawBackground(self, painter, rect):
         painter.fillRect(rect, QColor("#131724"))
@@ -417,7 +445,7 @@ class Canvas(QGraphicsView):
                 painter.drawPoint(QPointF(x, y))
 
     def node_position(self, index):
-        i = index - self.page * PAGE_SIZE
+        i = index
         if self.layout_mode == "vertical":
             return QPointF(136, 110 + i * 214)
         if self.layout_mode == "grid":
@@ -430,115 +458,242 @@ class Canvas(QGraphicsView):
     def rebuild(self, blocks, selected_row=-1):
         self.blocks = blocks
         self.starts = [b.start for b in blocks]
-        self.page = min(self.page, max(0, (len(blocks) - 1) // PAGE_SIZE))
         self.selected_indices = set()
         if selected_row >= 0 and blocks:
             index = max(0, bisect_right(self.starts, selected_row) - 1)
             self.selected_indices = {index}
-            self.page = index // PAGE_SIZE
-        self.render_page()
+        self.render_canvas()
+        if selected_row >= 0 and blocks:
+            self.reveal_index(index)
 
-    def render_page(self):
+    def render_canvas(self):
+        self.camera.stop()
+        self.follow_target = None
+        self.drag_scroll.stop()
+        self.drag_state = None
+        self.drag_items, self.drag_preview_items = [], []
+        self._rendering = True
         self.scene().blockSignals(True)
         self.scene().clear()
-        self.nodes = {}
-        start = self.page * PAGE_SIZE
-        visible = self.blocks[start : start + PAGE_SIZE]
-        for offset, block in enumerate(visible):
-            index = start + offset
-            node = Node(block, index, self)
-            node.setPos(self.node_position(index))
-            node.setSelected(index in self.selected_indices)
-            node.execution_state = self.execution_states.get(index, "")
-            node.playing = node.execution_state == "running"
-            self.scene().addItem(node)
-            self.nodes[index] = node
-        first = self.node_position(start)
-        vertical = self.layout_mode == "vertical"
-        start_pos = first + (
-            QPointF(CARD_WIDTH / 2, -65) if vertical else QPointF(-76, CARD_HEIGHT / 2)
+        self.nodes, self.decorations = {}, {}
+        first = self.node_position(0)
+        last = self.node_position(max(0, len(self.blocks) - 1))
+        right = (
+            136 + 3 * PITCH + CARD_WIDTH if self.layout_mode == "grid" else last.x() + CARD_WIDTH
         )
-        marker = StartPoint(self)
-        marker.setPos(start_pos)
-        self.scene().addItem(marker)
-        for offset in range(len(visible) + 1):
-            previous = self.node_position(start + offset - 1) if offset else None
-            next_pos = self.node_position(start + offset) if offset < len(visible) else None
-            if vertical:
-                a = (
-                    previous + QPointF(CARD_WIDTH / 2, CARD_HEIGHT)
-                    if previous
-                    else start_pos + QPointF(0, 20)
-                )
-                b = next_pos + QPointF(CARD_WIDTH / 2, 0) if next_pos else a + QPointF(0, 75)
-            else:
-                a = (
-                    previous + QPointF(CARD_WIDTH, CARD_HEIGHT / 2)
-                    if previous
-                    else start_pos + QPointF(20, 0)
-                )
-                b = next_pos + QPointF(0, CARD_HEIGHT / 2) if next_pos else a + QPointF(80, 0)
-            path = QPainterPath(a)
-            wrapping = (
-                self.layout_mode == "grid" and offset and offset % 4 == 0 and next_pos is not None
+        self.scene().setSceneRect(
+            QRectF(0, 25, max(right + 130, 500), last.y() + CARD_HEIGHT + 130)
+        )
+        self.setSceneRect(self.scene().sceneRect())
+        self.start_marker = StartPoint(self)
+        self.start_marker.setPos(
+            first
+            + (
+                QPointF(CARD_WIDTH / 2, -65)
+                if self.layout_mode == "vertical"
+                else QPointF(-76, CARD_HEIGHT / 2)
             )
-            if wrapping:
-                a = previous + QPointF(CARD_WIDTH / 2, CARD_HEIGHT)
-                b = next_pos + QPointF(CARD_WIDTH / 2, 0)
-                path = QPainterPath(a)
-                middle_y = (a.y() + b.y()) / 2
-                radius = min(16, (b.y() - a.y()) / 2, abs(b.x() - a.x()) / 2)
-                direction = 1 if b.x() > a.x() else -1
-                path.lineTo(a.x(), middle_y - radius)
-                path.quadTo(a.x(), middle_y, a.x() + direction * radius, middle_y)
-                path.lineTo(b.x() - direction * radius, middle_y)
-                path.quadTo(b.x(), middle_y, b.x(), middle_y + radius)
-                path.lineTo(b)
-                middle = QPointF((a.x() + b.x()) / 2, middle_y)
-            else:
-                path.lineTo(b)
-                middle = (a + b) / 2
-            self.scene().addPath(path, QPen(QColor("#5d5877"), 1.5))
-            arrow = QPainterPath(b + (QPointF(-4, -6) if vertical or wrapping else QPointF(-6, -4)))
-            arrow.lineTo(b)
-            arrow.lineTo(b + (QPointF(4, -6) if vertical or wrapping else QPointF(-6, 4)))
-            self.scene().addPath(arrow, QPen(QColor("#8d80ae"), 1.5))
-            row = (
-                visible[offset].start
-                if offset < len(visible)
-                else visible[-1].end
-                if visible
-                else 0
-            )
-            point = InsertPoint(self, row)
-            point.setPos(middle)
-            self.scene().addItem(point)
-            if offset == len(visible):
-                text = self.scene().addSimpleText(
-                    "FINISH" if start + len(visible) == len(self.blocks) else "CONTINUED",
-                    font(8, True),
-                )
-                text.setBrush(QColor(MUTED))
-                text.setPos(b + QPointF(-20, 12))
-        self.scene().setSceneRect(self.scene().itemsBoundingRect().adjusted(-30, -25, 45, 60))
+        )
+        self.scene().addItem(self.start_marker)
         self.scene().blockSignals(False)
+        self._rendering = False
+        self.update_visible_nodes()
 
-        if self.execution_trace is not None:
-            self.set_execution_trace(self.execution_trace, reveal=False)
+    def visible_indices(self):
+        count = len(self.blocks)
+        if count <= VIRTUALIZE_AFTER:
+            return set(range(count))
+        rect = (
+            self.mapToScene(self.viewport().rect())
+            .boundingRect()
+            .adjusted(-2 * PITCH, -448, 2 * PITCH, 448)
+        )
+        if self.layout_mode == "grid":
+            first = max(0, math.floor((rect.top() - 136) / 224))
+            last = min((count - 1) // 4, math.ceil((rect.bottom() - 136) / 224))
+            columns = range(
+                max(0, math.floor((rect.left() - 136) / PITCH)),
+                min(3, math.ceil((rect.right() - 136) / PITCH)) + 1,
+            )
+            return {r * 4 + c for r in range(first, last + 1) for c in columns if r * 4 + c < count}
+        start, end, pitch, origin = (
+            (rect.top(), rect.bottom(), 214, 110)
+            if self.layout_mode == "vertical"
+            else (rect.left(), rect.right(), PITCH, 136)
+        )
+        return set(
+            range(
+                max(0, math.floor((start - origin) / pitch)),
+                min(count - 1, math.ceil((end - origin) / pitch)) + 1,
+            )
+        )
+
+    def queue_visible_nodes(self, *_):
+        if not self._rendering and not self._render_queued:
+            self._render_queued = True
+            QTimer.singleShot(0, self, self.update_visible_nodes)
+
+    def remove_scene_item(self, item):
+        self.scene().removeItem(item)
+        if isinstance(item, QGraphicsObject):
+            item.deleteLater()
+
+    def update_visible_nodes(self):
+        self._render_queued = False
+        if self._rendering:
+            return
+        wanted = self.visible_indices()
+        if self.drag_state is not None:
+            wanted.update(self.drag_state["origins"])
+        self.scene().blockSignals(True)
+        try:
+            for index in set(self.nodes) - wanted:
+                node = self.nodes.pop(index)
+                node.animation.stop()
+                self.remove_scene_item(node)
+            for index in wanted - set(self.nodes):
+                block = self.blocks[index]
+                node = Node(block, index, self)
+                node.setPos(self.node_position(index))
+                node.setSelected(index in self.selected_indices)
+                node.execution_state = (
+                    block_state(block, self.execution_trace)
+                    if self.execution_trace is not None
+                    else self.execution_states.get(index, "")
+                )
+                node.playing = node.execution_state == "running"
+                self.scene().addItem(node)
+                self.nodes[index] = node
+            boundaries = {boundary for i in wanted for boundary in (i, i + 1)}
+            for boundary in set(self.decorations) - boundaries:
+                for item in self.decorations.pop(boundary):
+                    self.remove_scene_item(item)
+            for boundary in boundaries - set(self.decorations):
+                self.decorations[boundary] = self.make_connector(boundary)
+        finally:
+            self.scene().blockSignals(False)
+        self.apply_drag_positions()
+
+    def make_connector(self, boundary):
+        items = []
+        vertical = self.layout_mode == "vertical"
+        start_pos = self.start_marker.pos()
+        previous = self.node_position(boundary - 1) if boundary else None
+        next_pos = self.node_position(boundary) if boundary < len(self.blocks) else None
+        if vertical:
+            a = (
+                previous + QPointF(CARD_WIDTH / 2, CARD_HEIGHT)
+                if previous
+                else start_pos + QPointF(0, 20)
+            )
+            b = next_pos + QPointF(CARD_WIDTH / 2, 0) if next_pos else a + QPointF(0, 75)
+        else:
+            a = (
+                previous + QPointF(CARD_WIDTH, CARD_HEIGHT / 2)
+                if previous
+                else start_pos + QPointF(20, 0)
+            )
+            b = next_pos + QPointF(0, CARD_HEIGHT / 2) if next_pos else a + QPointF(80, 0)
+        path = QPainterPath(a)
+        wrapping = (
+            self.layout_mode == "grid" and boundary and boundary % 4 == 0 and next_pos is not None
+        )
+        if wrapping:
+            a = previous + QPointF(CARD_WIDTH / 2, CARD_HEIGHT)
+            b = next_pos + QPointF(CARD_WIDTH / 2, 0)
+            path = QPainterPath(a)
+            middle_y = (a.y() + b.y()) / 2
+            radius = min(16, (b.y() - a.y()) / 2, abs(b.x() - a.x()) / 2)
+            direction = 1 if b.x() > a.x() else -1
+            path.lineTo(a.x(), middle_y - radius)
+            path.quadTo(a.x(), middle_y, a.x() + direction * radius, middle_y)
+            path.lineTo(b.x() - direction * radius, middle_y)
+            path.quadTo(b.x(), middle_y, b.x(), middle_y + radius)
+            path.lineTo(b)
+            middle = QPointF((a.x() + b.x()) / 2, middle_y)
+        else:
+            path.lineTo(b)
+            middle = (a + b) / 2
+        items.append(self.scene().addPath(path, QPen(QColor("#5d5877"), 1.5)))
+        arrow = QPainterPath(b + (QPointF(-4, -6) if vertical or wrapping else QPointF(-6, -4)))
+        arrow.lineTo(b)
+        arrow.lineTo(b + (QPointF(4, -6) if vertical or wrapping else QPointF(-6, 4)))
+        items.append(self.scene().addPath(arrow, QPen(QColor("#8d80ae"), 1.5)))
+        row = (
+            self.blocks[boundary].start
+            if boundary < len(self.blocks)
+            else self.blocks[-1].end
+            if self.blocks
+            else 0
+        )
+        point = InsertPoint(self, row)
+        point.setPos(middle)
+        self.scene().addItem(point)
+        items.append(point)
+        if boundary == len(self.blocks):
+            text = self.scene().addSimpleText(
+                "FINISH",
+                font(8, True),
+            )
+            text.setBrush(QColor(MUTED))
+            text.setPos(b + QPointF(-20, 12))
+            items.append(text)
+        return items
+
+    def reveal_index(self, index):
+        if 0 <= index < len(self.blocks):
+            self.camera.stop()
+            self.ensureVisible(QRectF(self.node_position(index), self.card_size()), 40, 40)
+            self.update_visible_nodes()
+
+    @staticmethod
+    def card_size():
+        from PySide6.QtCore import QSizeF
+
+        return QSizeF(CARD_WIDTH, CARD_HEIGHT)
+
+    def follow_index(self, index):
+        if not self.follow_enabled or self.pointer_interaction or index == self.follow_target:
+            return
+        self.follow_target = index
+        if not 0 <= index < len(self.blocks):
+            return
+        self.camera.stop()
+        current = self.mapToScene(self.viewport().rect().center())
+        destination = self.node_position(index) + QPointF(CARD_WIDTH / 2, CARD_HEIGHT / 2)
+        visible = self.mapToScene(self.viewport().rect()).boundingRect()
+        bounds = self.sceneRect()
+        for axis, span, low, high in (
+            ("x", visible.width(), bounds.left(), bounds.right()),
+            ("y", visible.height(), bounds.top(), bounds.bottom()),
+        ):
+            value = getattr(destination, axis)()
+            clamped = (
+                (low + high) / 2
+                if high - low <= span
+                else max(low + span / 2, min(high - span / 2, value))
+            )
+            getattr(destination, "set" + axis.upper())(clamped)
+        self.camera.setStartValue(current)
+        self.camera.setEndValue(destination)
+        self.camera.start()
+
+    def set_follow_enabled(self, enabled):
+        self.follow_enabled = enabled
+        self.camera.stop()
+        target = self.follow_target
+        self.follow_target = None
+        if enabled and target is not None:
+            self.follow_index(target)
 
     def choose_indices(self, indices, emit=True, reveal=False):
         self.selected_indices = {i for i in indices if 0 <= i < len(self.blocks)}
-        if reveal and self.selected_indices:
-            index = min(self.selected_indices)
-            if index // PAGE_SIZE != self.page:
-                self.page = index // PAGE_SIZE
-                self.render_page()
         self.scene().blockSignals(True)
         for i, node in self.nodes.items():
             node.setSelected(i in self.selected_indices)
         self.scene().blockSignals(False)
-        if reveal and self.selected_indices and min(self.selected_indices) in self.nodes:
-            self.ensureVisible(self.nodes[min(self.selected_indices)], 40, 40)
+        if reveal and self.selected_indices:
+            self.reveal_index(min(self.selected_indices))
         if emit:
             self.selected.emit([self.blocks[i] for i in sorted(self.selected_indices)])
 
@@ -583,20 +738,18 @@ class Canvas(QGraphicsView):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self.queue_visible_nodes()
         if self.pan_origin is None:
             self.request_selection_visibility()
 
     def highlight(self, row):
         index = max(0, bisect_right(self.starts, row) - 1) if row >= 0 and self.blocks else -1
-        if index >= 0 and index // PAGE_SIZE != self.page:
-            self.page = index // PAGE_SIZE
-            self.render_page()
+        if index >= 0:
+            self.follow_index(index)
         for i, node in self.nodes.items():
             if node.playing != (i == index):
                 node.playing = i == index
                 node.update()
-        if index in self.nodes:
-            self.ensureVisible(self.nodes[index], 40, 40)
 
     def set_execution(self, states):
         self.execution_trace = None
@@ -604,17 +757,17 @@ class Canvas(QGraphicsView):
         active = [i for i, state in states.items() if state == "running"]
         last = [i for i, state in states.items() if state in ("last", "stopped", "failed")]
         target = min(active) if active else min(last) if last else None
-        if target is not None and target // PAGE_SIZE != self.page:
-            self.page = target // PAGE_SIZE
-            self.render_page()
+        if not states:
+            self.camera.stop()
+            self.follow_target = None
+        if target is not None:
+            self.follow_index(target)
         for index, node in self.nodes.items():
             state = states.get(index, "")
             if state != node.execution_state:
                 node.execution_state = state
                 node.playing = state == "running"
                 node.update()
-        if target in self.nodes:
-            self.ensureVisible(self.nodes[target], 24, 24)
 
     def set_execution_trace(self, trace, reveal=True):
         self.execution_trace = trace
@@ -640,25 +793,25 @@ class Canvas(QGraphicsView):
         else:
             row = -1
         target = max(0, bisect_right(self.starts, row) - 1) if row >= 0 and self.blocks else None
-        if reveal and target is not None and target // PAGE_SIZE != self.page:
-            self.page = target // PAGE_SIZE
-            self.render_page()
+        if reveal and target is not None:
+            self.follow_index(target)
         for index, node in self.nodes.items():
             state = block_state(node.block, trace)
             if state != node.execution_state:
                 node.execution_state = state
                 node.playing = state == "running"
                 node.update()
-        if reveal and target in self.nodes:
-            self.ensureVisible(self.nodes[target], 24, 24)
 
     def zoom(self, factor):
         current = self.transform().m11()
         target = max(0.4, min(1.8, current * factor))
+        self.camera.stop()
         self.scale(target / current, target / current)
+        self.update_visible_nodes()
         self.zoomChanged.emit(round(target * 100))
 
     def fit(self):
+        self.camera.stop()
         bounds = self.sceneRect()
         scale = max(
             0.5,
@@ -677,10 +830,12 @@ class Canvas(QGraphicsView):
         ):
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().minimum())
             self.verticalScrollBar().setValue(self.verticalScrollBar().minimum())
+        self.update_visible_nodes()
         self.zoomChanged.emit(round(scale * 100))
 
     def mousePressEvent(self, event):
         if event.button() in (Qt.LeftButton, Qt.MiddleButton):
+            self.camera.stop()
             self.pointer_interaction = True
         if event.button() == Qt.MiddleButton:
             self.reveal_requested = False
@@ -724,6 +879,7 @@ class Canvas(QGraphicsView):
                 self.request_selection_visibility()
 
     def wheelEvent(self, event):
+        self.camera.stop()
         if event.modifiers() & Qt.ControlModifier:
             self.zoom(1.12 if event.angleDelta().y() > 0 else 1 / 1.12)
         elif self.layout_mode == "horizontal" and not event.modifiers() & Qt.ShiftModifier:
@@ -734,6 +890,10 @@ class Canvas(QGraphicsView):
         event.accept()
 
     def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape and self.drag_state is not None:
+            self.finish_drag(cancel=True)
+            event.accept()
+            return
         if event.key() == Qt.Key_F1:
             self.command.emit("help")
             return
@@ -795,16 +955,17 @@ class Workflow(QWidget):
         layout.addWidget(self.canvas, 1)
         footer = QHBoxLayout()
         footer.setContentsMargins(14, 8, 14, 8)
-        self.page_label = QLabel("Actions run from left to right")
-        self.page_label.setObjectName("muted")
-        self.page_label.setWordWrap(True)
-        footer.addWidget(self.page_label)
-        self.previous = QPushButton("Previous")
-        self.next = QPushButton("Next")
-        for widget, delta in ((self.previous, -1), (self.next, 1)):
-            widget.setObjectName("ghost")
-            widget.clicked.connect(lambda checked=False, d=delta: self.change_page(d))
-            footer.addWidget(widget)
+        self.action_count = QLabel("Actions run from left to right")
+        self.action_count.setObjectName("muted")
+        self.action_count.setWordWrap(True)
+        footer.addWidget(self.action_count)
+        self.follow_btn = QPushButton("Follow playback")
+        self.follow_btn.setObjectName("segment")
+        self.follow_btn.setCheckable(True)
+        self.follow_btn.setChecked(True)
+        self.follow_btn.setToolTip("Smoothly follow the running action")
+        self.follow_btn.toggled.connect(self.canvas.set_follow_enabled)
+        footer.addWidget(self.follow_btn)
         footer.addStretch()
         keys = QPushButton("Keys · F1")
         keys.setObjectName("ghost")
@@ -844,25 +1005,9 @@ class Workflow(QWidget):
         selected = len(self.canvas.selected_indices)
         self.selection_label.setText(f"{selected:,} selected")
         self.selection_bar.setVisible(selected > 0)
-        self.previous.setVisible(count > PAGE_SIZE)
-        self.next.setVisible(count > PAGE_SIZE)
-        self.previous.setEnabled(self.canvas.page > 0)
-        self.next.setEnabled((self.canvas.page + 1) * PAGE_SIZE < count)
-        self.page_label.setText(
-            f"{count:,} actions · Drag to select"
-            if count <= PAGE_SIZE
-            else f"Actions {self.canvas.page * PAGE_SIZE + 1:,}–{min(count, (self.canvas.page + 1) * PAGE_SIZE):,} of {count:,}"
-        )
+        self.action_count.setText(f"{count:,} actions · Drag to select")
 
     def apply_layout(self):
         self.canvas.layout_mode = self.layout_choice.currentData()
-        self.canvas.render_page()
+        self.canvas.render_canvas()
         self.canvas.fit()
-
-    def change_page(self, delta):
-        page = self.canvas.page + delta
-        if 0 <= page <= (len(self.canvas.blocks) - 1) // PAGE_SIZE:
-            self.canvas.page = page
-            self.canvas.render_page()
-            self.canvas.horizontalScrollBar().setValue(0)
-            self.update_footer()
