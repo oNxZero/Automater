@@ -5,6 +5,7 @@ import pytest
 
 from automater.engine import PlaybackOptions, Replay
 from automater.models import Script, Step
+from automater.open_windows import GuardedDesktopBackend
 
 
 class Backend:
@@ -98,6 +99,179 @@ def test_target_loss_during_long_wait_cleans_up():
     assert replay.join(0.5)
     assert backend.events[-1].action == "key_up"
     assert any(v == "Target lost" for k, v in messages if k == "error")
+
+
+@pytest.mark.parametrize("operation", ["check", "release", "restore"])
+def test_stop_stays_responsive_during_slow_destination_operations(operation):
+    entered, allow, stopped = threading.Event(), threading.Event(), threading.Event()
+
+    class SlowBackend(Backend):
+        checks = 0
+        presses = 0
+
+        def check(self):
+            self.checks += 1
+            if operation == "check" and self.checks == 3:
+                entered.set()
+                allow.wait(2)
+
+        def send(self, step):
+            if step.action == "key_down":
+                self.presses += 1
+            if (operation == "release" and step.action == "key_up") or (
+                operation == "restore" and step.action == "key_down" and self.presses == 2
+            ):
+                entered.set()
+                allow.wait(2)
+            super().send(step)
+
+    backend = SlowBackend()
+    replay, _, _ = run([Step(0, "key_down", "KEY_W"), Step(20_000)], backend)
+    stopper = None
+    try:
+        assert backend.sent.wait(1)
+        if operation != "check":
+            replay.pause()
+            if operation == "restore":
+                eventually(lambda: replay.timeline["phase"] == "paused")
+                replay.pause()
+        assert entered.wait(1)
+
+        def stop():
+            replay.stop()
+            stopped.set()
+
+        stopper = threading.Thread(target=stop)
+        stopper.start()
+        assert stopped.wait(0.5), "Stop blocked on destination I/O"
+    finally:
+        allow.set()
+        replay.stop()
+        if stopper is not None:
+            stopper.join(2)
+        assert replay.join()
+    assert backend.closed and backend.events[-1].action == "key_up"
+    assert replay.timeline["outcome"] == "stopped"
+
+
+def test_stop_during_pre_dispatch_check_does_not_send_the_next_press():
+    entered, allow = threading.Event(), threading.Event()
+
+    class SlowCheckBackend(Backend):
+        checks = 0
+
+        def check(self):
+            self.checks += 1
+            if self.checks == 2:
+                entered.set()
+                allow.wait(2)
+
+    backend = SlowCheckBackend()
+    replay, _, _ = run([Step(0, "key_down", "KEY_A")], backend)
+    try:
+        assert entered.wait(1)
+        replay.stop()
+    finally:
+        allow.set()
+        assert replay.join()
+    assert backend.events == [] and backend.closed
+    assert replay.timeline["outcome"] == "stopped"
+
+
+@pytest.mark.parametrize("action", ["key_down", "move", "scroll"])
+def test_stop_during_final_desktop_focus_check_blocks_new_input(action):
+    entered, allow = threading.Event(), threading.Event()
+    backend = Backend()
+    checks = 0
+
+    def check_focus():
+        nonlocal checks
+        checks += 1
+        if checks == 3:
+            entered.set()
+            allow.wait(2)
+
+    replay = Replay(lambda: GuardedDesktopBackend(backend, check_focus))
+    replay.start(
+        Script(steps=[Step(0, action, "KEY_A" if action == "key_down" else "", x=1)]),
+        PlaybackOptions(countdown=0),
+    )
+    try:
+        assert entered.wait(1)
+        replay.stop()
+    finally:
+        allow.set()
+        assert replay.join()
+    assert not any(step.action == action for step in backend.events)
+    assert replay.timeline["outcome"] == "stopped" and not replay.timeline["error"]
+    assert replay.timeline["completed_events"] == 0
+    assert backend.closed
+
+
+def test_stop_during_desktop_cursor_focus_check_does_not_move_pointer():
+    entered, allow = threading.Event(), threading.Event()
+    backend = Backend()
+    positions = []
+    backend.prepare_start = lambda point: None
+    backend.begin_cycle = positions.append
+    checks = 0
+
+    def check_focus():
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            entered.set()
+            allow.wait(2)
+
+    replay = Replay(lambda: GuardedDesktopBackend(backend, check_focus))
+    replay.start(
+        Script(steps=[Step(0, "key_down", "KEY_A")]),
+        PlaybackOptions(countdown=0, start_position=(20, 30), start_settle=0),
+    )
+    try:
+        assert entered.wait(1)
+        replay.stop()
+    finally:
+        allow.set()
+        assert replay.join()
+    assert not positions and not backend.events and backend.closed
+    assert replay.timeline["outcome"] == "stopped" and not replay.timeline["error"]
+
+
+def test_stop_during_desktop_resume_focus_check_does_not_restore_held_keys():
+    entered, allow = threading.Event(), threading.Event()
+    backend = Backend()
+    restoring = False
+    checks = 0
+
+    def check_focus():
+        nonlocal checks
+        if restoring:
+            checks += 1
+            if checks == 2:
+                entered.set()
+                allow.wait(2)
+
+    replay = Replay(lambda: GuardedDesktopBackend(backend, check_focus))
+    replay.start(
+        Script(steps=[Step(0, "key_down", "KEY_W"), Step(20_000)]),
+        PlaybackOptions(countdown=0),
+    )
+    try:
+        assert backend.sent.wait(1)
+        replay.pause()
+        eventually(lambda: replay.timeline["phase"] == "paused")
+        restoring = True
+        replay.pause()
+        assert entered.wait(1)
+        replay.stop()
+    finally:
+        allow.set()
+        replay.stop()
+        assert replay.join()
+    assert sum(step.action == "key_down" for step in backend.events) == 1
+    assert backend.events[-1].action == "key_up" and backend.closed
+    assert replay.timeline["outcome"] == "stopped" and not replay.timeline["error"]
 
 
 def test_repeat_disabled_steps_and_speed():

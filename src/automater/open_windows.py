@@ -330,9 +330,13 @@ class GuardedDesktopBackend:
         self.check_focus = check_focus
         self.close_guard = close_guard
         self.activate_window = activate_window
+        self.cancelled = lambda: False
 
     def __getattr__(self, name):
         return getattr(self.backend, name)
+
+    def set_cancel_check(self, cancelled):
+        self.cancelled = cancelled
 
     def activate(self):
         if self.activate_window is not None:
@@ -344,11 +348,15 @@ class GuardedDesktopBackend:
 
     def begin_cycle(self, point):
         self.check()
+        if self.cancelled():
+            return False
         self.backend.begin_cycle(point)
 
     def send(self, step):
         if step.action not in ("key_up", "wait"):
             self.check()
+            if self.cancelled():
+                return False
         self.backend.send(step)
 
     def close(self):

@@ -137,47 +137,54 @@ class Replay:
         return not self.running
 
     def _wait(self, deadline, backend, held):
-        with self._condition:
-            while not self._stop:
-                if self._paused:
-                    started = self.clock()
-                    before_pause = self.timeline
-                    self._release(backend, held)
-                    partial = max(
-                        0,
-                        min(
-                            before_pause.get("wait_duration", 0),
-                            before_pause.get("wait_duration", 0) - max(0, deadline - started),
-                        ),
-                    )
-                    self._publish("paused", deadline=None, paused_wait_elapsed=partial)
-                    self.notify("state", "Paused • held inputs released")
+        while not self._stop:
+            if self._paused:
+                started = self.clock()
+                before_pause = self.timeline
+                self._release(backend, held)
+                partial = max(
+                    0,
+                    min(
+                        before_pause.get("wait_duration", 0),
+                        before_pause.get("wait_duration", 0) - max(0, deadline - started),
+                    ),
+                )
+                self._publish("paused", deadline=None, paused_wait_elapsed=partial)
+                self.notify("state", "Paused • held inputs released")
+                with self._condition:
                     while self._paused and not self._stop:
                         self._condition.wait(0.05)
-                    try:
-                        if not self._stop:
-                            backend.check()
-                            for code in sorted(
-                                held, key=lambda code: (code not in MODIFIER_KEYS, code)
-                            ):
-                                backend.send(Step(0, "key_down", code))
-                    finally:
-                        # Restoring a slow destination is part of the pause too.
-                        paused_for = self.clock() - started
-                        deadline += paused_for
-                        self._publish(paused_seconds=self.timeline["paused_seconds"] + paused_for)
-                    if self._stop:
-                        return None
-                    self.notify("state", "Playing")
-                    self._publish(
-                        before_pause["phase"],
-                        deadline=deadline,
-                        phase_started=before_pause["phase_started"] + paused_for,
-                    )
-                remaining = deadline - self.clock()
-                if remaining <= 0:
-                    return deadline
-                self._condition.wait(min(remaining, 0.05))
+                try:
+                    if not self._stop:
+                        backend.check()
+                        for code in sorted(
+                            held, key=lambda code: (code not in MODIFIER_KEYS, code)
+                        ):
+                            if self._stop:
+                                break
+                            if backend.send(Step(0, "key_down", code)) is False:
+                                break
+                finally:
+                    # Restoring a slow destination is part of the pause too.
+                    paused_for = self.clock() - started
+                    deadline += paused_for
+                    self._publish(paused_seconds=self.timeline["paused_seconds"] + paused_for)
+                if self._stop:
+                    return None
+                self.notify("state", "Playing")
+                self._publish(
+                    before_pause["phase"],
+                    deadline=deadline,
+                    phase_started=before_pause["phase_started"] + paused_for,
+                )
+            remaining = deadline - self.clock()
+            if remaining <= 0:
+                return deadline
+            # Destination I/O must never hold the lock used by Stop/Pause on the UI thread.
+            with self._condition:
+                if not self._stop and not self._paused:
+                    self._condition.wait(min(remaining, 0.05))
+            if not self._stop:
                 backend.check()
         return None
 
@@ -196,6 +203,8 @@ class Replay:
         backend, held, held_rows = None, set(), {}
         try:
             backend = self.backend_factory()
+            if hasattr(backend, "set_cancel_check"):
+                backend.set_cancel_check(lambda: self._stop)
             if hasattr(backend, "prepare"):
                 backend.prepare(script.steps)
             if options.start_position is not None:
@@ -223,6 +232,8 @@ class Replay:
                 if self._stop:
                     return
             backend.check()
+            if self._stop:
+                return
             self.notify("state", "Playing")
             loop = 0
             last_progress = 0.0
@@ -262,7 +273,8 @@ class Replay:
                 if options.start_position is not None:
                     if self._stop:
                         return
-                    backend.begin_cycle(options.start_position)
+                    if backend.begin_cycle(options.start_position) is False:
+                        return
                     self.notify(
                         "state",
                         f"Loop {loop} · starting at {options.start_position[0]}, {options.start_position[1]}",
@@ -317,13 +329,16 @@ class Replay:
                     # per-event dispatch costs must not accumulate across mouse reports.
                     deadline = nominal_deadline + (waited_until - dispatch_deadline)
                     backend.check()
+                    if self._stop:
+                        return
                     failed_row = index
                     sent_at = self.clock()
                     lateness = max(0.0, (sent_at - deadline) * 1000)
                     if step.action == "key_down":
                         held.add(step.code)  # Track before send, including partially failed sends.
                         held_rows[step.code] = index
-                    backend.send(step)
+                    if backend.send(step) is False:
+                        return  # Cancellation during the backend's final focus check.
                     if step.action in ("key_down", "key_up"):
                         transitions[step.code] = (
                             self.clock(),

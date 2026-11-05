@@ -1,3 +1,4 @@
+import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 from test_gui import clean, window
@@ -117,4 +118,76 @@ def test_save_as_cannot_overwrite_file_open_in_another_tab(qtbot, tmp_path, monk
     assert load(path).steps == [Step(25)]
     assert "another workflow tab" in win.status.text()
     win.path = None
+    clean(win)
+
+
+@pytest.mark.parametrize("unreadable", [False, True])
+def test_bad_recovery_does_not_block_valid_work_or_change_originals(
+    qtbot, tmp_path, monkeypatch, unreadable
+):
+    win = window(qtbot, tmp_path, monkeypatch)
+    bad = tmp_path / "recovery-a-bad.json"
+    if unreadable:
+        bad.mkdir()
+    else:
+        bad.write_bytes(b"{broken")
+    good = tmp_path / "recovery-z-good.json"
+    script = Script("Recovered work", steps=[Step(25)])
+    save(script, good)
+    before = good.read_bytes()
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.Yes)
+
+    win.offer_recovery()
+
+    recovered = [doc for doc in win.documents.values() if doc.script.name == script.name]
+    assert len(recovered) == 1 and recovered[0].script.steps == script.steps
+    assert recovered[0].recovery == good and win.dirty()
+    assert bad.name in win.status.text()
+    assert good.read_bytes() == before
+    assert bad.is_dir() if unreadable else bad.read_bytes() == b"{broken"
+    clean(win)
+
+
+def test_all_bad_recovery_reports_error_without_offering_empty_restore(
+    qtbot, tmp_path, monkeypatch
+):
+    win = window(qtbot, tmp_path, monkeypatch)
+    bad = tmp_path / "recovery-bad.json"
+    bad.write_bytes(b"\xff")
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *args: pytest.fail("No valid workflows to restore")
+    )
+    before = win.script().to_dict()
+
+    win.offer_recovery()
+
+    assert win.script().to_dict() == before
+    assert bad.name in win.status.text()
+    assert bad.read_bytes() == b"\xff"
+    clean(win)
+
+
+@pytest.mark.parametrize("switch_tab", [False, True])
+def test_undo_to_saved_state_clears_only_its_own_stale_recovery(
+    qtbot, tmp_path, monkeypatch, switch_tab
+):
+    win = window(qtbot, tmp_path, monkeypatch)
+    original = win.script().to_dict()
+    win.add_step(2)
+    win.autosave()
+    recovery = win.recovery_path
+    assert recovery.exists()
+    other = tmp_path / "recovery-other.json"
+    save(Script("Other unsaved work", steps=[Step(50)]), other)
+    before = other.read_bytes()
+    win.undo.undo()
+    assert win.script().to_dict() == original and not win.dirty()
+
+    if switch_tab:
+        win.new_script()
+    else:
+        win.autosave()
+
+    assert not recovery.exists()
+    assert other.read_bytes() == before
     clean(win)

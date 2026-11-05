@@ -7,12 +7,17 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from evdev import InputEvent, ecodes
 from Xlib import X, display
 
+from automater import storage
+from automater.engine import PlaybackOptions, Replay
 from automater.isolated import (
     GameSession,
     IsolatedBackend,
@@ -21,8 +26,9 @@ from automater.isolated import (
     application_command,
 )
 from automater.isolated_worker import InputHandler, InputServer, validate_environment
-from automater.models import Step
-from automater.x11 import WindowInfo, identity
+from automater.linux_input import Recorder
+from automater.models import Script, Step
+from automater.x11 import BackgroundBackend, WindowInfo, identity
 
 
 @pytest.fixture
@@ -171,6 +177,87 @@ def test_private_session_disconnect_releases_held_keys(game_receiver):
         X.KeyPress,
         X.KeyRelease,
     ]
+
+
+@pytest.mark.parametrize("destination", ["isolated", "background"])
+def test_record_save_load_and_repeat_delivers_input_to_a_private_window(
+    game_receiver, owned_display, tmp_path, monkeypatch, destination
+):
+    connection, _, address, target = game_receiver
+    recorder = Recorder()
+    started = time.monotonic() - 0.1
+    recorder.start(start_at=started)
+    reports = [
+        (ecodes.EV_KEY, ecodes.KEY_LEFTSHIFT, 1),
+        (ecodes.EV_KEY, ecodes.KEY_W, 1),
+        (ecodes.EV_REL, ecodes.REL_X, 12),
+        (ecodes.EV_REL, ecodes.REL_Y, -8),
+        (ecodes.EV_SYN, ecodes.SYN_REPORT, 0),
+        (ecodes.EV_REL, ecodes.REL_WHEEL, -2),
+        (ecodes.EV_REL, ecodes.REL_HWHEEL, 1),
+        (ecodes.EV_SYN, ecodes.SYN_REPORT, 0),
+        (ecodes.EV_KEY, ecodes.BTN_LEFT, 1),
+        (ecodes.EV_KEY, ecodes.BTN_LEFT, 0),
+        (ecodes.EV_KEY, ecodes.KEY_W, 0),
+        (ecodes.EV_KEY, ecodes.KEY_LEFTSHIFT, 0),
+    ]
+    for index, report in enumerate(reports):
+        recorder.feed(InputEvent(0, 0, *report), occurred_at=started + index / 1000)
+    path = tmp_path / "recorded.json"
+    script = Script(
+        "Recorded route",
+        steps=recorder.stop(),
+        start={"x": 100, "y": 120, "settle_ms": 0, "space": "window"},
+    )
+    storage.save(script, path)
+    loaded = storage.load(path)
+    assert loaded.steps == script.steps
+    assert [(s.x, s.y) for s in loaded.steps if s.action == "move"] == [(12, -8)]
+    assert [(s.x, s.y) for s in loaded.steps if s.action == "scroll"] == [(1, -2)]
+    if destination == "isolated":
+        factory = partial(IsolatedBackend, address, target)
+    else:
+        monkeypatch.setenv("DISPLAY", owned_display)
+        factory = partial(BackgroundBackend, target)
+    replay = Replay(factory)
+    replay.start(loaded, PlaybackOptions(countdown=0, repeats=3, speed=10, loop_gap=0))
+    try:
+        assert replay.join(3)
+        assert replay.timeline["outcome"] == "finished", replay.timeline
+        events = received(connection)
+        cycle = [
+            X.MotionNotify,
+            X.KeyPress,
+            X.KeyPress,
+            X.MotionNotify,
+            X.ButtonPress,
+            X.ButtonRelease,
+            X.ButtonPress,
+            X.ButtonRelease,
+            X.ButtonPress,
+            X.ButtonRelease,
+            X.ButtonPress,
+            X.ButtonRelease,
+            X.KeyRelease,
+            X.KeyRelease,
+        ]
+        assert [event.type for event in events] == cycle * 3
+        assert all(event.send_event == (destination == "background") for event in events)
+        for offset in range(0, len(events), len(cycle)):
+            assert (events[offset].event_x, events[offset].event_y) == (100, 120)
+            assert (events[offset + 3].event_x, events[offset + 3].event_y) == (112, 112)
+            assert [events[offset + i].detail for i in (1, 2, 12, 13)] == [
+                ecodes.KEY_LEFTSHIFT + 8,
+                ecodes.KEY_W + 8,
+                ecodes.KEY_W + 8,
+                ecodes.KEY_LEFTSHIFT + 8,
+            ]
+            assert [events[offset + i].detail for i in (4, 6, 8, 10)] == [5, 5, 7, 1]
+            assert events[offset + 2].state & X.ShiftMask
+            assert events[offset + 11].state & X.Button1Mask
+    finally:
+        replay.stop()
+        assert replay.join()
 
 
 def test_private_start_coordinates_are_checked_in_game_client_space(game_receiver):

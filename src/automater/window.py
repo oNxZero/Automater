@@ -819,10 +819,14 @@ class MainWindow(
         self.open_path(path)
 
     def autosave(self):
-        if self.loading or self.busy or not self.dirty():
+        if self.loading or self.busy:
             return
         try:
-            storage.save(self.script(), self.recovery_path)
+            script = self.script()
+            if script.to_dict() != self.saved_snapshot:
+                storage.save(script, self.recovery_path)
+            else:
+                self.recovery_path.unlink(missing_ok=True)
         except (OSError, ValueError) as exc:
             self.status.setText(f"Autosave unavailable: {exc}")
 

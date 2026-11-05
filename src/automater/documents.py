@@ -61,11 +61,13 @@ class DocumentsMixin:
             "activate_target": self.activate_target.isChecked(),
             "target": self.target.currentData(),
         }
-        if doc.script.to_dict() != doc.saved:
-            try:
+        try:
+            if doc.script.to_dict() != doc.saved:
                 storage.save(doc.script, doc.recovery)
-            except (OSError, ValueError) as exc:
-                self.show_error(f"Autosave unavailable: {exc}")
+            else:
+                doc.recovery.unlink(missing_ok=True)
+        except (OSError, ValueError) as exc:
+            self.show_error(f"Autosave unavailable: {exc}")
         return True
 
     def update_document_title(self, dirty=None):
@@ -346,21 +348,26 @@ class DocumentsMixin:
             files.append(legacy)
         if not files:
             return
-        try:
-            recovered = [(path, storage.load(path)) for path in files[:64]]
-            if (
-                QMessageBox.question(
-                    self, "Recover workflows", f"Restore {len(recovered)} unsaved workflow(s)?"
-                )
-                == QMessageBox.Yes
-            ):
-                remove_initial = (
-                    self.document_tabs.count() == 1 and not self.model.steps and not self.dirty()
-                )
-                for path, script in recovered:
-                    self.load_script(script, recovery=path)
-                    if remove_initial:
-                        self.close_document(0)
-                        remove_initial = False
-        except (OSError, ValueError) as exc:
-            self.show_error(f"Could not recover workflows: {exc}")
+        recovered, failures = [], []
+        for path in files[:64]:
+            try:
+                recovered.append((path, storage.load(path)))
+            except (OSError, ValueError) as exc:
+                failures.append(f"{path.name}: {exc}")
+        if recovered and (
+            QMessageBox.question(
+                self, "Recover workflows", f"Restore {len(recovered)} unsaved workflow(s)?"
+            )
+            == QMessageBox.Yes
+        ):
+            remove_initial = (
+                self.document_tabs.count() == 1 and not self.model.steps and not self.dirty()
+            )
+            for path, script in recovered:
+                if self.load_script(script, recovery=path) and remove_initial:
+                    self.close_document(0)
+                    remove_initial = False
+        if failures:
+            self.show_error(
+                "Could not recover these files (originals kept): " + "; ".join(failures)
+            )
