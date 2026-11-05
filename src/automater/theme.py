@@ -183,7 +183,6 @@ PATHS = {
     "scroll": '<path d="M7 7l3-4 3 4M10 3v14m-3-4 3 4 3-4"/>',
     "save": '<path d="M4 2h11l3 3v13H2V2Zm2 0v5h7V2M6 18v-7h8v7"/>',
     "open": '<path d="M2 7V4h6l2 3h8l-3 10H2Zm0 0h8"/>',
-    "file": '<path d="M4 2h8l4 4v12H4Zm8 0v5h4M7 11h6m-6 3h6"/>',
     "check": '<path d="m4 10 4 4 8-8"/>',
     "trash": '<path d="M3 5h14M8 2h4l1 3M5 5l1 13h8l1-13M8 8v7m4-7v7"/>',
     "copy": '<rect x="6" y="6" width="11" height="12" rx="2"/><path d="M3 14V2h10"/>',

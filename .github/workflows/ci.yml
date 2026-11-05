@@ -24,6 +24,7 @@ jobs:
       - run: python -m pip install -c requirements.lock -e '.[dev]'
       - run: ruff check src tests scripts
       - run: ruff format --check src tests scripts
+      - run: python scripts/check_assets.py
       - name: Check shell scripts and install application-menu entry
         run: |
           bash -n start.sh install.sh

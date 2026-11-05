@@ -18,7 +18,6 @@ from automater.dialogs import SaveChangesDialog
 from automater.models import Script
 from automater.open_windows import DesktopWindow
 from automater.overlay import PointerOverlay
-from automater.storage import save
 from automater.window_picker import WindowPicker
 
 OUTPUT = Path(__file__).resolve().parents[1] / "docs"
@@ -154,13 +153,6 @@ with tempfile.TemporaryDirectory(prefix="automater-docs-") as folder:
     overlay.show()
     capture("pointer-guide", overlay)
     overlay.close()
-    win.library_dir.mkdir(exist_ok=True)
-    save(routine(), win.library_dir / "gather-and-return.json")
-    save(window.sample(), win.library_dir / "movement-and-interaction.json")
-    win.refresh_library()
-    win.navigate(1)
-    QTest.qWait(250)
-    capture("library", win)
     win.new_script()
     win.navigate(0)
     capture("welcome", win)
@@ -170,7 +162,6 @@ with tempfile.TemporaryDirectory(prefix="automater-docs-") as folder:
     QTest.qWait(250)
     capture("countdown", win)
     win.stop()
-    capture("unsaved-state", win)
     win.saved_snapshot = win.script().to_dict()
     win.close()
     app.processEvents()

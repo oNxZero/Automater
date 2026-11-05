@@ -344,3 +344,18 @@ verifies the text viewport keeps its size.
 - Source and wheel builds contain the Automater package/command and only synthetic
   example JSON. The expanded distro/native-display CI matrix also checks desktop
   registration; administrator package installation is not executed on the host.
+
+### README animation and asset cleanup
+
+The README again embeds a looping GIF, captured from actual Automater Test mode
+playback with synthetic data and no physical input. The 1152×756 capture has 195
+frames at 20 fps and is about 2.5 MiB. Decoded frames were inspected for branding,
+action highlights, animated connections and camera movement.
+
+The unreferenced library/unsaved-state screenshots, duplicate documentation logo
+and unused file glyph were removed. Screenshot generation no longer recreates the
+unused images; the README uses the application's existing icon. The asset checker
+verifies documentation references and evaluates all theme stylesheets plus color
+overrides, keeping dynamically selected light icons. CI runs this check to catch
+missing files or unused assets in future changes. GIF capture/encoding is
+reproducible with `scripts/record_demo.py`; frames remain temporary.

@@ -47,3 +47,10 @@ mocked backends or a private X11 receiver cannot establish it. See the
 `QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/screenshots.py` refreshes native
 Qt screenshots using synthetic workflows, an isolated config directory and Test
 mode. It never captures physical input or connects to real destination windows.
+
+`QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/record_demo.py` records the README's
+looping GIF from real Test mode playback at 20 fps. Encoding requires FFmpeg;
+Automater itself does not require FFmpeg. Temporary frames are cleaned up afterward.
+
+Run `.venv/bin/python scripts/check_assets.py` after documentation or asset changes.
+It checks references and unused files, including dynamically selected theme icons.

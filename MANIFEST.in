@@ -1,7 +1,9 @@
 include LICENSE README.md CONTRIBUTING.md SECURITY.md requirements.lock start.sh install.sh
-recursive-include docs *.md *.png *.svg
+recursive-include docs *.md *.png *.gif
 include examples/input-controls.json examples/movement-and-interaction.json
 include scripts/smoke_gui.py
 include scripts/launch.sh
 include scripts/screenshots.py
+include scripts/record_demo.py
+include scripts/check_assets.py
 global-exclude *.py[cod] *.log

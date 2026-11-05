@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.svg" width="68" alt="Automater" />
+<img src="src/automater/assets/automater.svg" width="68" alt="Automater" />
 
 # Automater
 
@@ -19,7 +19,9 @@ Inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
 
 </div>
 
-![Automater's workflow editor](docs/editor.png)
+![Automater running a workflow in Test mode, with animated connections and camera follow](docs/workflow-demo.gif)
+
+*A real app preview in Test mode. No keyboard or mouse input is sent.*
 
 ## What you can do
 
