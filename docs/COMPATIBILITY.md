@@ -89,5 +89,6 @@ backend omits it. Relative replay remains available with reset disabled.
 - [ScreenCast capabilities and optional monitor metadata](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
 - [xdg-desktop-portal-wlr implements ScreenCast/Screenshot, not RemoteDesktop](https://github.com/emersion/xdg-desktop-portal-wlr)
 
-See [validation](VALIDATION.md) and [release checks](RELEASE.md) for the distinction
-between automated coverage and physical-desktop/game testing.
+CI covers installation, automated behavior and GUI startup. Real device input,
+scaled/multiple monitors, game acceptance and GPU-backed sessions require testing
+on the target desktop. A passing CI job does not establish those results.

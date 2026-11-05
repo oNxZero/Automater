@@ -43,7 +43,7 @@ Qt needs EGL/OpenGL and keyboard/XCB libraries. Minimal Debian/Ubuntu systems ma
 need `libegl1 libopengl0 libgl1 libglib2.0-0 fontconfig libfreetype6 libdbus-1-3
 libxkbcommon0 libxcb-cursor0`. Qt's Wayland plugin is
 included. The separate-session mode additionally needs Gamescope and GPU support;
-follow [its guide](ISOLATED_SESSIONS.md) only if using that mode.
+follow [the setup guide](USER_GUIDE.md#run-independently-while-using-another-window) only if using that mode.
 
 On Fedora, common equivalents include `python3-pip python3-devel gcc kernel-headers
 mesa-libEGL libglvnd-opengl mesa-libGL libxkbcommon libxcb xcb-util-cursor fontconfig

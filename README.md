@@ -185,7 +185,7 @@ reach the foreground app; Automater does not grab physical devices.
 | --- | --- | --- |
 | Active desktop | Uses your normal pointer/keyboard; focuses a chosen window after countdown. Switching away stops playback. | Linux uinput on Wayland/X11; physical input access required. |
 | Background window · X11 | Sends messages to one existing window while another stays focused. Its pointer is virtual and window-local. | X11/Xwayland only; games and raw-input apps may ignore it. |
-| Separate game session · Gamescope | Launches a new game on an independent display, leaving desktop input separate. | Requires Gamescope/GPU support and a compatible game; see [setup](docs/ISOLATED_SESSIONS.md). |
+| Separate game session · Gamescope | Launches a new game on an independent display, leaving desktop input separate. | Requires Gamescope/GPU support and a compatible game; see [setup](docs/USER_GUIDE.md#run-independently-while-using-another-window). |
 
 Choose an existing window by title/app; no executable picker is needed. KDE Plasma
 includes native Wayland discovery. Other desktops currently list X11/Xwayland
@@ -195,7 +195,8 @@ through Automater. A separate session must launch a new game instance.
 Mouse paths depend on sensitivity, acceleration, starting state and the game.
 Retaining relative reports and timings does not guarantee pixel-identical paths
 or game acceptance. A cursor reset does not reset a character or camera. See
-[pointer support](docs/POINTER.md) and [validation](docs/VALIDATION.md).
+[starting-point setup](docs/USER_GUIDE.md#start-countdown-and-loop-reset) and
+[Linux compatibility](docs/COMPATIBILITY.md).
 
 ## Linux device permissions
 
@@ -254,8 +255,8 @@ before deleting it. System libraries and input permissions are left in place.
 
 ## Development
 
-[CONTRIBUTING](CONTRIBUTING.md) covers setup and checks. See [the audit](docs/AUDIT.md),
-[validation](docs/VALIDATION.md) and [release readiness](docs/RELEASE.md) for fixes,
-verified behavior and physical-desktop checks still requiring manual testing.
-
-[Similar tools](docs/ALTERNATIVES.md) · [Roadmap](docs/PLAN.md) · [Earlier releases](docs/CHANGELOG.md) · [Security](SECURITY.md)
+[CONTRIBUTING](CONTRIBUTING.md) covers development and checks. CI verifies automated
+behavior and GUI startup; physical desktop input, GPU sessions and game acceptance
+still need testing on the target machine. Report bugs through
+[Issues](https://github.com/oNxZero/Automater/issues); see [Security](SECURITY.md)
+for sensitive reports.

@@ -1,7 +1,7 @@
 # Contributing
 
 Automater is a native PySide6 Linux app. Start with the
-[user guide](docs/USER_GUIDE.md), [format](docs/FORMAT.md) and [audit](docs/AUDIT.md).
+[user guide](docs/USER_GUIDE.md) and [Linux compatibility](docs/COMPATIBILITY.md).
 
 ## Development setup
 
@@ -38,9 +38,19 @@ send input to a user's real applications. Run `./start.sh --demo` for UI work.
   output before sharing; it may identify local devices and paths.
 
 Direct game/compositor acceptance must be tested on an actual supported desktop;
-mocked backends or a private X11 receiver cannot establish it. See the
-[release checks](docs/RELEASE.md). Report security-sensitive issues through
+mocked backends or a private X11 receiver cannot establish it. Before a stable
+release, test real device recording/replay, held-input cleanup on Stop, pointer
+reset across monitors, permission denial and GPU-backed game sessions.
+Report security-sensitive issues through
 [the private reporting route](SECURITY.md).
+
+## Workflow data
+
+Portable workflows contain versioned UTF-8 JSON data, never executable Python.
+`src/automater/models.py` defines validation; `tests/test_models_storage.py` and the
+synthetic files in `examples/` cover the format. Versions 1–4 remain readable;
+newer fields add timing ranges, starting coordinates, visual groups and group notes.
+Keep import compatibility and original event samples when changing the schema.
 
 ## Documentation screenshots
 

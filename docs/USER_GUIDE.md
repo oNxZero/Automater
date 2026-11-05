@@ -239,6 +239,18 @@ coordinates are relative to the selected X11 window's client area and do not mov
 or capture the real pointer. The target must still be chosen each session. Switching
 to another workflow restores its saved starting point or turns reset off if it has none.
 
+| Destination | Starting-point coordinates |
+| --- | --- |
+| X11 active desktop | Root-window screen pixels. |
+| Hyprland active desktop | Global logical pixels, including negative monitor positions. |
+| Wayland pointer portal | Approved physical-monitor logical coordinates; monitor metadata is required. |
+| Background X11 or separate game session | Selected window's client-area pixels; your real cursor stays independent. |
+| Test mode | Simulation only; no pointer moves. |
+
+Portal denial, cancellation, revocation or connection loss stops/rejects positioning.
+Relative replay remains available with reset disabled, provided device access works.
+A cursor reset does not reset your character, camera or game state.
+
 ![Start controls](start-controls.png)
 
 
@@ -274,7 +286,7 @@ Check the visible **Test mode** line first. Test mode intentionally emits nothin
 click **Use real inputs** to leave preview mode. In background mode the real cursor
 stays where it is. For desktop reset on KDE Wayland, connect pointer control in
 Start settings first. A permission or input-device error is shown in the status bar;
-hover it for the full message. See [pointer support](POINTER.md).
+hover it for the full message. See [starting-point setup](#start-countdown-and-loop-reset).
 
 
 ## Multiple workflows
@@ -289,11 +301,38 @@ one document. Saving cannot overwrite a file open in a different tab.
 
 ## Run independently while using another window
 
-Choose **Settings → Run → Separate game session · Gamescope** and click
-**Set up game session…**. Pick Sober, close any existing Sober instance, and launch.
-Select its game window in Run settings, turn off Test mode, and Run. Gamescope needs
-compatible Vulkan/GPU support. This mode never falls back to desktop injection.
-See the [full setup and compatibility guide](ISOLATED_SESSIONS.md).
+This mode launches a new game display with independent input. It requires Gamescope,
+a compatible Vulkan driver/GPU and an X11-capable game. An already running game
+cannot be moved into the session.
+
+1. Close any existing Sober instance yourself. Automater refuses to launch a second
+   instance that might reuse your ordinary desktop window.
+2. Choose **Settings → Run → Separate game session · Gamescope**, then
+   **Set up game session…**.
+3. Choose **Sober · Flatpak**, set the resolution, and click **Launch game in session**.
+   Automater does not install Gamescope or change persistent Flatpak permissions.
+4. Select the game window in Run settings. Only windows inside that session appear;
+   a sole window is selected automatically.
+5. Turn Test mode off and run a short routine. You can use another desktop or window
+   while it runs. Stop releases held inputs inside the game session.
+
+![Separate game setup](isolated-session.png)
+
+For another app, choose Custom application and enter its executable and arguments.
+Arguments are passed directly, without shell expansion. Close existing single-instance
+apps first; the destination must open inside the new session.
+
+Starting X/Y coordinates refer to the game client area. This transport does not use
+your desktop pointer permission or `/dev/uinput`; physical recording and global
+hotkeys still need readable input devices. It never falls back to desktop injection
+if startup, targeting or input fails. Existing native Wayland windows cannot receive
+independent background input through this mode.
+
+Closing Automater stops automation and leaves the launched game open. **Close game
+session** asks before closing it because game progress could be lost. Use **Session
+diagnostics** for startup logs. A missing Vulkan device requires working GPU/driver
+access. Game sensitivity, pointer grabs and frame handling still affect replay;
+physical Gamescope/Sober compatibility needs testing on your machine.
 
 ## Understand playback and its last result
 
