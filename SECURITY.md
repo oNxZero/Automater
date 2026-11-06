@@ -4,8 +4,7 @@ For sensitive bugs involving input capture, saved data, command execution or loc
 session authentication, use [GitHub's private vulnerability reporting](https://github.com/oNxZero/Automater/security/advisories/new)
 when it is enabled. Do not attach real recordings or credentials to a public issue.
 If that route is unavailable, open an issue asking for a private contact without
-including the sensitive details. The maintainer must enable private reporting as
-part of the public-release setup.
+including the sensitive details.
 
 Ordinary UI/compatibility bugs belong in Issues. Include the version, Linux desktop,
 playback mode and a synthetic reproduction. There is no guaranteed response SLA;

@@ -11,7 +11,7 @@ Inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Automater-v0.13.0-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Automater-v0.13.1-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 [![Checks](https://github.com/oNxZero/Automater/actions/workflows/ci.yml/badge.svg)](https://github.com/oNxZero/Automater/actions/workflows/ci.yml)
 
@@ -56,10 +56,8 @@ Conditional branches, nested loops, gamepads, Windows and macOS are not implemen
 )
 ```
 
-You need **Git**, **Python 3.11+**, and repository access while this project is
-private. If cloning asks for credentials, use your GitHub account's configured
-Git credentials or [GitHub CLI](https://cli.github.com/) with repository access.
-If the folder already exists, follow [Updating](#updating) instead.
+You need **Linux**, **Git** and **Python 3.11+**. If the installation folder already
+exists, follow [Updating](#updating) instead.
 
 The installer:
 

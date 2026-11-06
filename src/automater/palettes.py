@@ -19,7 +19,7 @@ class Palette:
     warning: str = "#e8c58a"
 
 
-# The named palettes follow the user's original Moonlight theme gallery.
+# Palette presets based on the Moonlight theme gallery.
 PALETTES = {
     "automater": Palette(
         "Automater",

@@ -178,7 +178,7 @@ class AppearanceMixin:
         ):
             palette.setColor(role, QColor(value))
         self.setPalette(palette)
-        self.setWindowIcon(theme.icon("automation", theme.ACCENT))
+        self.setWindowIcon(theme.app_icon())
         for widget in self.findChildren(QPushButton):
             glyph = widget.property("themeGlyph")
             if glyph:

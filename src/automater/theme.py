@@ -162,7 +162,7 @@ PATHS = {
     "press": '<rect x="3" y="10" width="14" height="8" rx="2"/><path d="M10 2v10m-3-3 3 3 3-3"/>',
     "release": '<rect x="3" y="10" width="14" height="8" rx="2"/><path d="M10 11V2M7 5l3-3 3 3"/>',
     "select": '<path d="M3 3h5m-5 0v5m14-5h-5m5 0v5M3 17h5m-5 0v-5m14 5h-5m5 0v-5"/>',
-    "automation": '<path d="m3 17 7-14 7 14M6.5 10h7"/><rect x="1" y="15" width="4" height="4" rx="1"/><rect x="15" y="15" width="4" height="4" rx="1"/>',
+    "automation": '<g stroke-width="1.5"><path d="M7.25 7h5.25M15.75 11.25V13a3.5 3.5 0 0 1-3.5 3.5h-5A3.5 3.5 0 0 1 3.75 13v-1.75M2 12.75 3.75 11 5.5 12.75"/></g><circle cx="5" cy="7" r="2.25" fill="currentColor" stroke="none"/><path d="m12.5 3.75 5 3.25-5 3.25Z" fill="currentColor" stroke="currentColor" stroke-width=".6"/>',
     "flow": '<rect x="2" y="7" width="5" height="6" rx="1.3"/><rect x="13" y="7" width="5" height="6" rx="1.3"/><path d="M7 10h6m-2-2 2 2-2 2"/>',
     "list": '<path d="M7 5h11M7 10h11M7 15h11M2 5h1M2 10h1M2 15h1"/>',
     "library": '<rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 7h14m-9 0v10m3-6h3m-3 3h3"/>',
@@ -200,6 +200,11 @@ PATHS = {
 
 def icon(name, color=MUTED, size=20, *, resolved=False):
     return _icon(name, color.lower() if resolved else resolve_hex(color.lower()), size)
+
+
+def app_icon():
+    """Use the same full-color mark as the desktop entry and repository."""
+    return QIcon(str(Path(__file__).parent / "assets/automater.svg"))
 
 
 def shadow_color():

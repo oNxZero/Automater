@@ -42,7 +42,7 @@ from .open_windows import WindowObserver, discover_windows, guarded_desktop, mat
 from .preferences import Preferences
 from .run_feedback import RunFeedbackMixin
 from .session_ui import SessionMixin
-from .theme import icon
+from .theme import app_icon, icon
 from .tutorial import TutorialMixin
 from .visuals import VisualsMixin
 from .window_picker import WindowPicker
@@ -168,7 +168,7 @@ class MainWindow(
         self.active_block = None
         self._sync_selection = False
         self.blocks = []
-        self.setWindowIcon(icon("automation", "#b5a4fa"))
+        self.setWindowIcon(app_icon())
         self.setWindowTitle("Automater")
         self.resize(1240, 800)
         self.setMinimumSize(1000, 680)
