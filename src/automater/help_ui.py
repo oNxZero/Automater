@@ -21,7 +21,7 @@ def getting_started(window):
     for title, text in (
         (
             "1 · Build or record",
-            "Add action inserts after your selection; a + on a connector inserts at that exact point. F6 records and appends to the current workflow. Re-record replaces only the selected consecutive actions.",
+            "Add action inserts after your selection; a + on a connector inserts at that exact point. Record / Record more (F6) adds a recording at the end. Re-record replaces only the selected consecutive actions.",
         ),
         (
             "2 · Understand the controls",

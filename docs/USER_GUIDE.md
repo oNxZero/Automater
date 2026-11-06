@@ -1,9 +1,33 @@
 # Using Automater
 
+## Build your first workflow
+
+The first launch offers a full guided example. Choose **Start example** to open
+its own workflow tab; your existing work stays intact. Follow five steps to build
+**Hold Space for 500 ms → Timer for 300 ms → Hold E for 100 ms**.
+
+Each step points to the real controls. The instruction also appears inside the
+Add action dialog. **Next** becomes available when the current task is done;
+**Back** lets you review a step. **Skip** or Escape ends the guide. An empty
+example tab is removed; work you have started is kept.
+
+![Guided example beside the real action properties](tutorial.png)
+
+The last step runs the complete example in **Test mode**, without sending input.
+A successful run opens the congratulations screen. Stopped or failed previews
+stay on the Run step so you can try again. **Create my own** opens a new blank
+workflow and keeps your example as a reference; **Keep editing** stays in the
+example. You can save it with the usual Save button.
+
+![Successful example and congratulations](tutorial-complete.png)
+
+Reopen the guide from **File → Guided example**, or **Build your first workflow**
+on an empty canvas. Recording is available after you finish or skip the guide.
+
 ## Start with the example
 
 Run `./start.sh --demo`. The example holds W, waits, then taps E. **Test mode** is
-already enabled. Click **Run workflow** to watch the sequence without sending input.
+already enabled. Click **Run** to watch the sequence without sending input.
 
 ![Workflow workspace](editor.png)
 
@@ -22,14 +46,20 @@ The plus button on a connector inserts directly at that location.
 Properties are hidden until needed. Click a card to select it; the close button
 in the inspector gives the space back to the canvas. **Action** on the right shows its properties:
 
-- **Key / button:** Choose the physical key or mouse button. A hold edits its press
+- **Key or button:** Choose the physical key or mouse button. A hold edits its press
   and release together.
 - **Delay before:** Time to wait before beginning the action. This is separate from
   the time the key stays held.
 - **Hold for:** Duration between press and release.
 - **Wait for:** Duration of a standalone wait action.
 - **Horizontal / Vertical:** Relative movement, or scroll notches, for a single sample.
-- **Include in playback:** Disabled actions are visibly faded and their delays are skipped.
+- **Enabled:** Disabled actions are visibly faded and their delays are skipped.
+
+The key picker shows friendly names; enter a key name to search. Timing fields
+show only meaningful decimals and keep fractional milliseconds. **More options**
+contains Enabled, random timing, pointer-path preview and Re-record.
+
+![Action properties with key and timing controls](action-properties.png)
 
 Click **Apply changes** to commit. Undo restores the previous event data. The four
 buttons below Apply move left, move right, duplicate, and delete. The same actions
@@ -95,7 +125,7 @@ and focuses your chosen app after the countdown. Turn it off if you prefer to
 focus the app yourself. After starting, switching away stops the script and releases
 held inputs. This still moves your normal
 pointer. Use **Use any active window** in the picker to remove that focus check.
-**Existing window · X11** sends best-effort background messages. For a native
+**Background window · X11** sends best-effort background messages. For a native
 Wayland window, the picker explicitly offers **Use on active desktop** instead.
 **Separate game session** lists only windows inside the game display you launched;
 use that advanced mode for independent mouse/keyboard input in supported games.
@@ -121,10 +151,10 @@ Choose keyboard, buttons/wheel and/or movement. The permissions link explains
 missing device access. If your original Moonlight clicker works, the same access
 may already be available.
 
-Press F6. After the countdown, do your routine and press F6 again. By default the result
+Use **Record** (or **Record more** when adding to a routine), or press F6. After the countdown, do your routine and press F6 again. By default the result
 appends to the existing workflow. To replace a part, select one action or adjacent
 actions and choose **Re-record**. Discard keeps the original; Undo restores it after
-finishing. Empty recordings keep existing actions. Disable **Append to current
+finishing. Empty recordings keep existing actions. Disable **Add recording to current
 workflow** in Devices for a confirmed replacement of all actions. F12 also finishes capture
 or cancels a countdown. Control hotkeys never enter the recording. Capture in
 progress stays in memory until stopped; stopping hands it to the editor and autosave.
@@ -147,8 +177,9 @@ Named groups use version 3; group explanations use version 4 and require v0.9 or
 newer. Existing files are not rewritten when Library indexes them or converts
 older inline note cards for display. Save explicitly to persist the conversion.
 
-**Group** stores starting position, camera direction, bindings and reminders for
-each selected section.
+**Group notes** let you describe a starting position, camera direction, bindings
+and reminders for a section. These are written reminders; they do not configure
+playback. Use **Settings → Start** to set an actual cursor reset.
 An unsaved-change badge appears in the header. Idle edits are autosaved every five
 seconds; startup offers recovery after an interrupted session. Saved workflows
 are never silently replaced by recovery. Closing a changed tab or quitting prompts before discarding
@@ -448,8 +479,7 @@ event as a separate rendered frame.
 
 ## Appearance and the quick guide
 
-Open **File → Appearance & themes**, use the Appearance button in Run settings, or
-press **Ctrl+,**. The gallery includes Automater plus Moonlight, Obsidian, Crimson,
+Open **File → Appearance & themes**, or press **Ctrl+,**. The gallery includes Automater plus Moonlight, Obsidian, Crimson,
 Dracula, Viper, Nord, Sakura, Solaris, Catppuccin and Daylight. Click a card to apply
 it; accent and background color pickers add local overrides. Choosing another
 gallery card clears the overrides. Reset to Automater restores the original look.

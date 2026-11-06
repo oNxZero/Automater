@@ -43,6 +43,7 @@ from .preferences import Preferences
 from .run_feedback import RunFeedbackMixin
 from .session_ui import SessionMixin
 from .theme import icon
+from .tutorial import TutorialMixin
 from .visuals import VisualsMixin
 from .window_picker import WindowPicker
 
@@ -73,6 +74,7 @@ def sample():
 
 
 class MainWindow(
+    TutorialMixin,
     CompatibilityMixin,
     AppearanceMixin,
     DocumentsMixin,
@@ -97,6 +99,12 @@ class MainWindow(
         self.library_stop = threading.Event()
         self.recovery_path = self.config_dir / "recovery.json"
         self.preferences_path = self.config_dir / "preferences.json"
+        self.first_launch = (
+            not self.preferences_path.exists()
+            and not any(self.config_dir.glob("*.json"))
+            and not self.library_dir.exists()
+        )
+        self.tutorial_dialog = None
         self.initializing = True
         self.preferences_error = ""
         try:
@@ -403,11 +411,13 @@ class MainWindow(
         duration = sum(s.delay_ms for s in self.model.steps if s.runnable) / 1000
         maximum = sum(s.maximum_ms for s in self.model.steps if s.runnable) / 1000
         notes = sum(block.kind == "note" for block in self.blocks)
-        pieces = [f"{len(self.blocks) - notes:,} actions"]
+        count = len(self.blocks) - notes
+        pieces = [f"{count:,} action{'s' if count != 1 else ''}"]
         if notes:
             pieces.append(f"{notes} note{'s' if notes != 1 else ''}")
         if self.model.groups:
-            pieces.append(f"{len(self.model.groups)} groups")
+            count = len(self.model.groups)
+            pieces.append(f"{count} group{'s' if count != 1 else ''}")
         pieces.append(f"{duration:.2f}" + (f"–{maximum:.2f} s" if maximum != duration else " s"))
         self.stats.setText(" · ".join(pieces) if self.model.steps else "")
 
@@ -462,13 +472,13 @@ class MainWindow(
         self.preview_banner.setVisible(self.test_mode.isChecked())
         self.real_inputs_btn.setEnabled(not self.busy)
         self.record_btn.setToolTip(
-            "Append a recording to the current actions · F6"
+            "Record more actions at the end of this workflow · F6"
             if self.append_recording.isChecked()
             else "Replace actions with a recording; Undo restores them · F6"
         )
         if not self.recorder.active and not self.record_pending:
             self.record_btn.setText(
-                "Append · F6"
+                "Record more · F6"
                 if self.model.steps and self.append_recording.isChecked()
                 else "Record · F6"
             )
@@ -912,7 +922,7 @@ class MainWindow(
             if self.mode.currentIndex() == 1
             else "Runs in a separate Gamescope display. Your normal mouse, keyboard and other desktops stay independent. Launch the game here first; existing instances cannot be moved."
             if self.mode.currentIndex() == 2
-            else "Desktop playback uses your normal pointer. The selected window must stay focused; switching away stops the workflow."
+            else "Uses your normal mouse and keyboard. Switching away from the selected window stops playback."
         )
         self.update_run_summary()
 
@@ -1054,6 +1064,7 @@ class MainWindow(
             self.health.setText(
                 f"{len(paths)} selected · {info['readable_devices']} available\n{output}"
             )
+            self.input_help_btn.setVisible(not paths or not info["uinput_writable"])
             if paths:
                 self.monitor = DeviceMonitor(
                     paths,
@@ -1075,7 +1086,7 @@ class MainWindow(
                 self.notice.setText(
                     "Choose a keyboard and mouse, then apply your selection."
                     if info["readable_devices"]
-                    else "No readable input devices. Open Input access help below. Editing and Test mode are available."
+                    else "Start with Input access help to connect your keyboard and mouse. You can still edit and preview."
                 )
                 self.device_badge.setText("Devices •")
                 self.device_badge.setToolTip("Input setup needed")
@@ -1107,6 +1118,9 @@ class MainWindow(
         )
 
     def on_hotkey(self, action):
+        if action == "stop" and self.tutorial_dialog is not None:
+            self.tutorial_dialog.cancel_preview()
+            return
         if action != "stop" and QApplication.activeModalWidget() is not None:
             return
         if action == "stop":
@@ -1142,6 +1156,11 @@ class MainWindow(
         self.begin_recording(rows)
 
     def begin_recording(self, replace_rows=None):
+        if self.tutorial_dialog is not None:
+            self.status.setText(
+                "This example uses Test mode. Finish or skip the tutorial before recording."
+            )
+            return
         if not self.group_inspector.flush():
             self.show_error("Finish the current group name/notes before recording")
             return
@@ -1161,7 +1180,7 @@ class MainWindow(
                     self,
                     "Replace entire workflow?",
                     "Replace all existing actions with the next recording? Choose No to keep them.\n"
-                    "To add actions, enable Append to current workflow in Devices.",
+                    "To add actions, enable Add recording to current workflow in Devices.",
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.No,
                 )
@@ -1247,6 +1266,10 @@ class MainWindow(
             self.status.setText("F6 adds this recording · Discard keeps the original workflow")
 
     def toggle_play(self):
+        if self.tutorial_dialog is not None:
+            if self.active_document_id != self.tutorial_dialog.document_id:
+                return
+            self.test_mode.setChecked(True)
         if getattr(self, "replay", None) and self.replay.running:
             self.stop()
             return
@@ -1330,6 +1353,8 @@ class MainWindow(
                     self.start_settle.value() / 1000,
                 ),
             )
+            if self.tutorial_dialog is not None:
+                self.tutorial_dialog.playback_started(self.replay, script)
             self.clear_run_feedback()
             self.play_btn.setText("Stop · F7")
             self.play_btn.setIcon(icon("stop", "#211b30"))
@@ -1486,19 +1511,19 @@ class MainWindow(
     def show_help(self):
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Linux input setup")
-        dialog.setText(
-            "Automater needs read access to selected /dev/input/event* devices "
-            "and write access to /dev/uinput. Existing Moonlight permissions may already cover this. "
-            "Do not run the GUI as root."
-        )
+        dialog.setText("Connect your keyboard and mouse for recording and real playback.")
         dialog.setInformativeText(
-            "Ask your system administrator to load uinput and grant device access. "
-            "The README contains an optional udev rule. Input access can read keyboard "
-            "activity across the desktop. Only recorded events are saved.\n\n"
-            "Native Wayland supports desktop replay. Background routing only lists "
-            "X11/Xwayland windows and may be ignored by games.\n\n"
-            "Use Test mode to explore without device permissions. Global F-keys require "
-            "a readable keyboard; the on-screen Stop always works."
+            "Follow Input permissions in docs/INSTALL.md, then return to Devices and Refresh. "
+            "Existing Moonlight permissions may already work.\n\n"
+            "You can build workflows and use Test mode while setting this up."
+        )
+        dialog.setDetailedText(
+            "Recording needs read access to the selected /dev/input/event* devices. "
+            "Desktop playback also needs writable /dev/uinput. Ask your administrator "
+            "to load uinput and grant access; docs/INSTALL.md describes the setup. "
+            "Run the app as your regular user.\n\n"
+            "Input access can read keyboard activity across the desktop. Only recorded "
+            "events are saved. Global F-keys need a selected readable keyboard."
         )
         dialog.exec()
 
@@ -1512,6 +1537,8 @@ class MainWindow(
         if not self.confirm_close_documents():
             event.ignore()
             return
+        if self.tutorial_dialog is not None:
+            self.tutorial_dialog.reject()
         self.library_shutdown = True
         self.library_stop.set()
         self.window_observer.close()

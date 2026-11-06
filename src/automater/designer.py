@@ -106,6 +106,7 @@ def build_ui(w):
     menu.addAction("Input controls example", w.load_controls_example)
     menu.addSeparator()
     menu.addAction("Appearance & themes…\tCtrl+,", w.show_appearance)
+    menu.addAction("Guided example…", w.show_tutorial)
     menu.addAction("Getting started…", w.show_getting_started)
     menu.addAction("Linux compatibility…", w.show_compatibility)
     file_btn = QPushButton("File")
@@ -313,6 +314,11 @@ def build_ui(w):
     example = w.welcome_example = button("Try an example", w.load_example, "ghost")
     welcome.addWidget(example, 0, Qt.AlignCenter)
     welcome.addWidget(
+        button("Build your first workflow", w.show_tutorial, "primary", glyph="flow"),
+        0,
+        Qt.AlignCenter,
+    )
+    welcome.addWidget(
         button("Quick guide", w.show_getting_started, "ghost", glyph="info"), 0, Qt.AlignCenter
     )
     welcome.addStretch()
@@ -322,8 +328,8 @@ def build_ui(w):
     inspector = QFrame()
     w.inspector_panel = inspector
     inspector.setObjectName("inspector")
-    inspector.setMinimumWidth(272)
-    inspector.setMaximumWidth(330)
+    inspector.setMinimumWidth(300)
+    inspector.setMaximumWidth(360)
     ins_layout = QVBoxLayout(inspector)
     ins_layout.setContentsMargins(18, 16, 18, 16)
     ins_layout.setSpacing(18)
@@ -409,12 +415,9 @@ def build_run_settings(w):
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(14)
     layout.addWidget(label("Run settings", "heading"))
-    layout.addWidget(button("Appearance & themes…", w.show_appearance, "ghost", glyph="spark"))
     w.test_mode = QCheckBox("Test mode")
     w.test_mode.setToolTip("Runs the real scheduler and highlights actions without emitting input")
     w.test_mode.toggled.connect(w.update_run_summary)
-    layout.addWidget(w.test_mode)
-    layout.addWidget(label("Preview without sending any input."))
     layout.addWidget(label("Destination"))
     w.mode = QComboBox()
     w.mode.setMinimumContentsLength(12)
@@ -454,7 +457,7 @@ def build_run_settings(w):
     session.addWidget(label("Separate game session", "heading"))
     session.addWidget(
         label(
-            "Advanced: launch a new game instance with independent mouse and keyboard. To use a game that is already open, choose Active desktop or Existing window in Run settings instead. Closing Automater leaves the game open."
+            "Launch a new game with independent input. For a game already open, choose Active desktop or Background window · X11. Closing Automater leaves the game open."
         )
     )
     compact_session.addWidget(
@@ -518,7 +521,9 @@ def build_run_settings(w):
         widget.setMinimumWidth(80)
         widget.valueChanged.connect(w.update_run_summary)
         form.addRow(text, widget)
-    layout.addLayout(form)
+    layout.insertWidget(3, w.test_mode)
+    layout.insertWidget(4, label("Preview without sending any input."))
+    layout.insertLayout(3, form)
     w.run_estimate = label("")
     layout.addWidget(w.run_estimate)
     layout.addStretch()
@@ -603,7 +608,7 @@ def build_library(w):
     w.library_search.addAction(icon("search"), QLineEdit.LeadingPosition)
     w.library_search.textChanged.connect(w.filter_library)
     layout.addWidget(w.library_search)
-    w.library_empty = label("No saved workflows yet. Use Save workflow to add your first one.")
+    w.library_empty = label("No saved workflows yet. Use Save to add your first one.")
     layout.addWidget(w.library_empty)
     w.library = QListWidget()
     w.library.setAccessibleName("Saved workflows. Double click to open.")
@@ -621,38 +626,41 @@ def build_setup(w):
     w.notice = label("Choose your keyboard and mouse. Your selection is remembered.", "body")
     layout.addWidget(w.notice)
     columns = QHBoxLayout()
-    device_card, device = card("Record from", "Choose the physical inputs to use.")
+    device_card, device = card(
+        "1 · Connect your devices", "Choose a keyboard and mouse, then Apply selection."
+    )
+    w.input_help_btn = button("Input access help", w.show_help, "primary", glyph="info")
+    device.addWidget(w.input_help_btn)
     w.health = label("")
     device.addWidget(w.health)
     w.device_list = QListWidget()
     w.device_list.setAccessibleName("Physical input devices to monitor")
     w.device_list.setMinimumHeight(140)
-    device.addWidget(w.device_list, 1)
     actions = QHBoxLayout()
     w.apply_devices_btn = button("Apply selection", w.refresh_devices, glyph="check")
     actions.addWidget(w.apply_devices_btn)
     actions.addWidget(button("Refresh", w.refresh_devices, "ghost", glyph="refresh"))
     actions.addWidget(button("Recommended", w.recommend_devices, "ghost"))
     device.addLayout(actions)
+    device.addWidget(w.device_list, 1)
     columns.addWidget(device_card, 3)
-    capture_card, capture = card("Capture", "Choose what goes into a recording.")
+    capture_card, capture = card(
+        "2 · Choose what to record", "Press F6 to start, then F6 again to finish."
+    )
     w.capture_keys = QCheckBox("Keyboard")
     w.capture_buttons = QCheckBox("Mouse buttons and wheel")
     w.capture_motion = QCheckBox("Mouse movement")
     for widget in (w.capture_keys, w.capture_buttons, w.capture_motion):
         widget.setChecked(True)
         capture.addWidget(widget)
-    w.append_recording = QCheckBox("Append to current workflow")
+    w.append_recording = QCheckBox("Add recording to current workflow")
     capture.addSpacing(12)
     capture.addWidget(w.append_recording)
     capture.addWidget(
-        label(
-            "Recording adds to the end by default. To replace an action, select it and choose Re-record. Replacing the entire workflow asks first."
-        )
+        label("New recordings go at the end. To replace a section, select it and choose Re-record.")
     )
     capture.addStretch()
-    capture.addWidget(label("F6 records or finishes. F7 runs. F8 pauses. F12 stops."))
-    capture.addWidget(button("Input access help", w.show_help, "ghost", glyph="info"))
+    capture.addWidget(label("Preview in Test mode before using real input. F12 stops playback."))
     capture.addWidget(button("Check compatibility", w.show_compatibility, "ghost", glyph="check"))
     columns.addWidget(capture_card, 2)
     layout.addLayout(columns, 1)

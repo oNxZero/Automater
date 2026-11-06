@@ -8,6 +8,23 @@ from automater.models import Script, Step
 from automater.storage import load, save
 
 
+def test_short_workflow_fits_after_layout_without_tiny_initial_text(qtbot, tmp_path, monkeypatch):
+    win = window(qtbot, tmp_path, monkeypatch)
+    win.resize(1000, 680)
+    win.hide_inspector()
+    canvas = win.workflow.canvas
+    qtbot.wait(30)  # Let the first document and deferred widget layout settle.
+    qtbot.waitUntil(lambda: not canvas.fit_pending)
+    assert canvas.transform().m11() >= 0.9
+    canvas.zoom(0.6)
+    zoom = canvas.transform().m11()
+    win.navigate(1)
+    win.navigate(0)
+    qtbot.wait(30)
+    assert canvas.transform().m11() == zoom
+    clean(win)
+
+
 def test_grid_columns_follow_viewport_width_zoom_and_inspector(qtbot, tmp_path, monkeypatch):
     win = window(qtbot, tmp_path, monkeypatch)
     win.load_script(Script(steps=[Step(20, standalone=True) for _ in range(348)]))

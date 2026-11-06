@@ -30,6 +30,7 @@ class Preferences:
     library_folders: list[str] = field(default_factory=list)
     theme: str = "automater"
     theme_colors: dict[str, str] = field(default_factory=dict)
+    tutorial_seen: bool = False
 
     def validate(self):
         from .models import number
@@ -84,6 +85,7 @@ class Preferences:
             "append_recording",
             "test_mode",
             "activate_target",
+            "tutorial_seen",
         ):
             if type(getattr(self, setting)) is not bool:
                 raise ValueError(f"Invalid {setting} setting")

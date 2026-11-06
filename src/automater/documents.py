@@ -286,6 +286,7 @@ class DocumentsMixin:
                 return
             canvas = self.workflow.canvas
             if view:
+                canvas.fit_pending = False
                 canvas.setTransform(view["transform"])
                 canvas.queue_reflow()
                 canvas.horizontalScrollBar().setValue(view["horizontal"])

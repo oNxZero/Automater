@@ -91,6 +91,33 @@ with tempfile.TemporaryDirectory(prefix="automater-docs-") as folder:
     QTest.qWait(150)
     win.workflow.canvas.fit()
     capture("editor", win)
+    win.workflow.canvas.choose_indices({0})
+    capture("action-properties", win)
+    original_document = win.active_document_id
+    win.show_tutorial()
+    tutorial = win.tutorial_dialog
+    tutorial.start_example()
+    win.insert_steps(create_action(0, "KEY_SPACE", duration=100))
+    tutorial.go(1)
+    capture("tutorial", win)
+    win.action_inspector.duration.setValue(500)
+    win.action_inspector.apply_btn.click()
+    tutorial.go(1)
+    win.insert_steps(create_action(2, duration=300))
+    tutorial.go(1)
+    win.insert_steps(create_action(0, "KEY_E", duration=100))
+    tutorial.go(1)
+    win.toggle_play()
+    while win.busy:
+        QTest.qWait(20)
+    QTest.qWait(100)
+    assert tutorial.succeeded
+    capture("tutorial-complete", win)
+    tutorial.reject()
+    win.close_document(win.document_tabs.currentIndex())
+    assert win.active_document_id == original_document
+    win.workflow.canvas.choose_indices(set())
+    win.hide_inspector()
     win.show_appearance()
     capture("themes", win.appearance_dialog)
     win.appearance_dialog.hide()

@@ -6,7 +6,7 @@ from bisect import bisect_right
 from dataclasses import dataclass
 
 from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox,
     QGraphicsItem,
@@ -26,7 +26,7 @@ from .connections import FlowConnection, connection_state
 from .editor import editing_command
 from .group_canvas import GroupCanvasMixin
 from .run_feedback import block_state
-from .theme import COLORS, MUTED, TEXT, font, icon, paint_color, shadow_color
+from .theme import COLORS, MUTED, TEXT, font, icon, paint_color
 from .workflow_drag import WorkflowDragMixin
 
 VIRTUALIZE_AFTER = 160
@@ -171,72 +171,81 @@ class Node(QGraphicsObject):
             }.get(self.execution_state, COLORS[self.block.kind])
         )
         rect = QRectF(0, 0, CARD_WIDTH, CARD_HEIGHT)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(shadow_color())
-        painter.drawRoundedRect(rect.translated(0, 6), 12, 12)
-        gradient = QLinearGradient(0, 0, CARD_WIDTH, CARD_HEIGHT)
-        gradient.setColorAt(0, paint_color("#25283c" if self.isSelected() else "#222738"))
-        gradient.setColorAt(1, paint_color("#1c2030"))
         border = (
             color
             if self.isSelected() or self.playing or self.execution_state
             else paint_color("#55566f" if self.hovered else "#353b50")
         )
-        painter.setPen(QPen(border, 2 if self.isSelected() or self.playing else 1))
-        painter.setBrush(gradient)
-        painter.drawRoundedRect(rect, 12, 12)
-        if self.emphasis:
-            glow = paint_color(color)
-            glow.setAlpha(round(22 * self.emphasis))
-            painter.setBrush(glow)
-            painter.setPen(Qt.NoPen)
-            painter.drawRoundedRect(rect, 12, 12)
+        painter.setPen(QPen(border, 1.5 if self.isSelected() or self.playing else 1))
+        painter.setBrush(paint_color("#25283c" if self.isSelected() else "#1b1e2e"))
+        painter.drawRoundedRect(rect, 10, 10)
         if not self.block.enabled:
             painter.setOpacity(0.45)
-        tint = paint_color(color)
-        tint.setAlpha(30)
-        painter.setBrush(tint)
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(QRectF(16, 16, 33, 33), 9, 9)
+        if self.emphasis:
+            glow = paint_color(color)
+            glow.setAlpha(round(12 * self.emphasis))
+            painter.setBrush(glow)
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(rect, 10, 10)
+        painter.setPen(QPen(color, 3, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(1, 24, 1, CARD_HEIGHT - 24)
         name = "mouse" if self.block.kind == "mouse" else self.block.kind
         if self.block.title.startswith("Press "):
             name = "press"
         elif self.block.title.startswith("Release "):
             name = "release"
-        painter.drawPixmap(22, 22, icon(name, color.name(), resolved=True).pixmap(21, 21))
-        painter.setFont(font(8, True))
+        painter.drawPixmap(16, 17, icon(name, color.name(), resolved=True).pixmap(19, 19))
+        painter.setFont(font(9))
         painter.setPen(paint_color(MUTED))
+        kind = {
+            "key": "Keyboard",
+            "mouse": "Mouse",
+            "wait": "Timer",
+            "move": "Movement",
+            "scroll": "Scroll",
+        }[self.block.kind]
+        painter.drawText(QRectF(42, 16, 110, 22), Qt.AlignVCenter, kind)
         painter.drawText(
-            QRectF(58, 17, 126, 28),
+            QRectF(158, 16, 30, 22),
             Qt.AlignVCenter | Qt.AlignRight,
-            f"{getattr(self, 'preview_index', self.index) + 1:02d}  ·  {self.execution_state.upper() if self.execution_state else 'SKIPPED' if not self.block.enabled else self.block.kind.upper()}",
+            f"{getattr(self, 'preview_index', self.index) + 1:02d}",
         )
-        painter.setFont(font(11, True))
+        painter.setFont(font(14, True))
         painter.setPen(paint_color(TEXT))
         painter.drawText(
-            QRectF(16, 62, 174, 24),
+            QRectF(16, 53, 174, 28),
             Qt.AlignVCenter,
             painter.fontMetrics().elidedText(self.block.title, Qt.ElideRight, 174),
         )
-        painter.setFont(font(9))
+        painter.setFont(font(10))
         painter.setPen(paint_color("#a0aac5"))
-        painter.drawText(QRectF(16, 88, 174, 20), Qt.AlignVCenter, self.block.detail)
-        painter.setPen(QPen(paint_color("#32384c"), 1))
-        painter.drawLine(16, 115, 188, 115)
-        painter.setFont(font(8))
-        painter.setPen(color)
-        count = self.block.end - self.block.start
         painter.drawText(
-            QRectF(16, 119, 70, 18),
+            QRectF(16, 84, 174, 24),
             Qt.AlignVCenter,
-            "Playing…" if self.playing else f"{count} event{'s' if count != 1 else ''}",
+            painter.fontMetrics().elidedText(self.block.detail, Qt.ElideRight, 174),
         )
-        painter.setPen(paint_color("#929bb6"))
-        painter.drawText(
-            QRectF(78, 119, 110, 18),
-            Qt.AlignVCenter | Qt.AlignRight,
-            timing_range(self.block.duration, self.block.duration_max),
+        status = (
+            "Playing…"
+            if self.playing
+            else {
+                "completed": "Completed",
+                "last": "Last action",
+                "stopped": "Stopped here",
+                "failed": "Needs attention",
+            }.get(
+                self.execution_state,
+                "Skipped" if not self.block.enabled else "Edit action" if self.hovered else "",
+            )
         )
+        if not status and (
+            self.block.kind in ("move", "scroll")
+            or self.block.title.startswith(("Press ", "Release "))
+        ):
+            status = timing_range(self.block.duration, self.block.duration_max)
+        if status:
+            painter.setFont(font(8))
+            painter.setPen(color if self.execution_state or self.playing else paint_color(MUTED))
+            painter.drawText(QRectF(16, 116, 174, 18), Qt.AlignVCenter, status)
 
     def hoverEnterEvent(self, event):
         self.hovered = True
@@ -428,6 +437,7 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         self.anchor = None
         self._rendering = False
         self._render_queued = False
+        self.fit_pending = False
         self.decorations = {}
         self.start_marker = None
         self.drag_state = None
@@ -895,6 +905,8 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
 
     def showEvent(self, event):
         super().showEvent(event)
+        if self.fit_pending:
+            QTimer.singleShot(0, self, lambda: self.fit() if self.fit_pending else None)
         if self.follow_target is not None and not self.follow_interrupted:
             self.follow_index(self.follow_target, force=True)
         self.update_connections()
@@ -981,6 +993,7 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
         self.update_connections()
 
     def zoom(self, factor):
+        self.fit_pending = False
         current = self.transform().m11()
         target = max(0.4, min(1.8, current * factor))
         self.camera.stop()
@@ -991,6 +1004,10 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
 
     def fit(self):
         self.camera.stop()
+        if not self.isVisible():
+            self.fit_pending = True
+            return
+        self.fit_pending = False
         if self.layout_mode == "grid":
             self.resetTransform()
             self.reflow_grid()
@@ -999,13 +1016,30 @@ class Canvas(GroupCanvasMixin, WorkflowDragMixin, QGraphicsView):
             self.update_visible_nodes()
             self.zoomChanged.emit(100)
             return
-        bounds = self.sceneRect()
+        # Fit the actions rather than the scene's generous scrolling margins.
+        first = self.node_position(0)
+        last = self.node_position(max(0, len(self.blocks) - 1))
+        bounds = QRectF(first.x(), first.y(), CARD_WIDTH, CARD_HEIGHT).united(
+            QRectF(last.x(), last.y(), CARD_WIDTH, CARD_HEIGHT)
+        )
+        if self.start_marker is not None:
+            bounds = bounds.united(self.start_marker.sceneBoundingRect())
+        for rect in self.group_rects.values():
+            bounds = bounds.united(rect)
+        # Include the final connector and its Finish label.
+        bounds = bounds.adjusted(
+            0,
+            0,
+            0 if self.layout_mode == "vertical" else 110,
+            110 if self.layout_mode == "vertical" else 0,
+        )
+        bounds = bounds.adjusted(-24, -24, 24, 24)
         scale = max(
-            0.5,
+            0.85 if len(self.blocks) <= 3 else 0.5,
             min(
                 1,
-                (self.viewport().width() - 30) / max(1, bounds.width()),
-                (self.viewport().height() - 30) / max(1, bounds.height()),
+                self.viewport().width() / max(1, bounds.width()),
+                self.viewport().height() / max(1, bounds.height()),
             ),
         )
         self.resetTransform()
@@ -1224,7 +1258,7 @@ class Workflow(QWidget):
         selected = len(self.canvas.selected_indices)
         self.selection_label.setText(f"{selected:,} selected")
         self.selection_bar.setVisible(selected > 0)
-        self.action_count.setText(f"{count:,} actions")
+        self.action_count.setText(f"{count:,} action{'s' if count != 1 else ''}")
 
     def apply_layout(self):
         self.canvas.layout_mode = self.layout_choice.currentData()

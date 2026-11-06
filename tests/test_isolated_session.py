@@ -28,7 +28,8 @@ from automater.isolated import (
 from automater.isolated_worker import InputHandler, InputServer, validate_environment
 from automater.linux_input import Recorder
 from automater.models import Script, Step
-from automater.x11 import BackgroundBackend, WindowInfo, identity
+from automater.open_windows import GuardedDesktopBackend
+from automater.x11 import BackgroundBackend, FocusGuard, WindowInfo, identity
 
 
 @pytest.fixture
@@ -117,6 +118,106 @@ def received(connection):
         if event.type in (X.KeyPress, X.KeyRelease, X.ButtonPress, X.ButtonRelease, X.MotionNotify):
             events.append(event)
     return events
+
+
+def wait_for_input(connection, count):
+    events = []
+    deadline = time.monotonic() + 2
+    while len(events) < count and time.monotonic() < deadline:
+        events.extend(received(connection))
+        time.sleep(0.005)
+    assert len(events) == count, [(event.type, event.detail) for event in events]
+    return events
+
+
+@pytest.mark.parametrize("destination", ["isolated", "background"])
+@pytest.mark.parametrize("pause_resume", [False, True])
+def test_replay_stop_and_pause_release_real_held_input(
+    game_receiver, owned_display, monkeypatch, destination, pause_resume
+):
+    connection, window, address, target = game_receiver
+    window.warp_pointer(100, 100)
+    connection.sync()
+    received(connection)
+    if destination == "isolated":
+        factory = partial(IsolatedBackend, address, target)
+    else:
+        monkeypatch.setenv("DISPLAY", owned_display)
+        factory = partial(BackgroundBackend, target)
+    script = Script(
+        steps=[
+            Step(0, "key_down", "KEY_LEFTSHIFT"),
+            Step(0, "key_down", "KEY_W"),
+            Step(0, "key_down", "BTN_LEFT"),
+            Step(3_600_000),
+        ]
+    )
+    replay = Replay(factory)
+    replay.start(script, PlaybackOptions(countdown=0))
+    try:
+        presses = wait_for_input(connection, 3)
+        assert [event.type for event in presses] == [X.KeyPress, X.KeyPress, X.ButtonPress]
+        if pause_resume:
+            replay.pause()
+            releases = wait_for_input(connection, 3)
+            assert [event.type for event in releases] == [
+                X.ButtonRelease,
+                X.KeyRelease,
+                X.KeyRelease,
+            ]
+            replay.pause()
+            restored = wait_for_input(connection, 3)
+            assert [(event.type, event.detail) for event in restored] == [
+                (X.KeyPress, ecodes.KEY_LEFTSHIFT + 8),
+                (X.ButtonPress, 1),
+                (X.KeyPress, ecodes.KEY_W + 8),
+            ]
+            assert restored[-1].state & X.ShiftMask
+            assert restored[-1].state & X.Button1Mask
+        replay.stop()
+        assert replay.join(1), "Stop did not interrupt the hour-long timer"
+        assert replay.timeline["outcome"] == "stopped", replay.timeline
+        releases = wait_for_input(connection, 3)
+        assert [(event.type, event.detail) for event in releases] == [
+            (X.ButtonRelease, 1),
+            (X.KeyRelease, ecodes.KEY_W + 8),
+            (X.KeyRelease, ecodes.KEY_LEFTSHIFT + 8),
+        ]
+    finally:
+        replay.stop()
+        assert replay.join()
+
+
+def test_real_focus_change_stops_replay_and_still_delivers_cleanup(
+    game_receiver, owned_display, monkeypatch
+):
+    connection, window, _, target = game_receiver
+    monkeypatch.setenv("DISPLAY", owned_display)
+    window.set_input_focus(X.RevertToParent, X.CurrentTime)
+    connection.sync()
+
+    def factory():
+        guard = FocusGuard(target)
+        return GuardedDesktopBackend(BackgroundBackend(target), guard.check, guard.close)
+
+    replay = Replay(factory)
+    replay.start(
+        Script(steps=[Step(0, "key_down", "KEY_W"), Step(3_600_000)]),
+        PlaybackOptions(countdown=0),
+    )
+    try:
+        assert wait_for_input(connection, 1)[0].type == X.KeyPress
+        connection.screen().root.set_input_focus(X.RevertToParent, X.CurrentTime)
+        connection.sync()
+        assert replay.join(1), "Focus loss did not interrupt playback"
+        assert replay.timeline["outcome"] == "failed"
+        assert "lost focus" in replay.timeline["error"]
+        release = wait_for_input(connection, 1)[0]
+        assert (release.type, release.detail) == (X.KeyRelease, ecodes.KEY_W + 8)
+        assert release.window.id == window.id
+    finally:
+        replay.stop()
+        assert replay.join()
 
 
 def test_private_game_input_has_its_own_pointer_focus_and_real_events(game_receiver, monkeypatch):

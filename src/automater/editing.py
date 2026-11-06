@@ -175,7 +175,14 @@ class EditingMixin:
         menu.exec(QCursor.pos())
 
     def compose_action(self, kind, row=None):
+        guide = self.tutorial_dialog
+        if guide is not None and guide.document_id is None:
+            if not guide.start_example():
+                return
+            row = None
         dialog = ActionDialog(kind, self)
+        if guide is not None:
+            guide.setup_action_dialog(dialog)
         if dialog.exec() == QDialog.Accepted:
             self.insert_steps(dialog.steps, row, "Add action")
 

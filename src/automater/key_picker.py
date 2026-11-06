@@ -14,7 +14,8 @@ class KeyPicker(QComboBox):
         self.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.setMaxVisibleItems(14)
         for code in sorted(KEY_CODES, key=lambda c: (c.startswith("BTN_"), friendly_key(c))):
-            self.addItem(f"{friendly_key(code)} · {code}", code)
+            self.addItem(friendly_key(code), code)
+            self.setItemData(self.count() - 1, code, Qt.ToolTipRole)
         self.completer().setCaseSensitivity(Qt.CaseInsensitive)
         self.completer().setFilterMode(Qt.MatchContains)
         self.completer().setCompletionMode(QCompleter.PopupCompletion)

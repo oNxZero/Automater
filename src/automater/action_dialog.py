@@ -1,17 +1,18 @@
 from dataclasses import replace
 
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFormLayout,
+    QHBoxLayout,
     QSpinBox,
     QVBoxLayout,
 )
 
 from .actions import KINDS, create_action
-from .inspector import milliseconds
+from .inspector import milliseconds, property_field
 from .key_picker import KeyPicker
 from .widgets import label
 
@@ -25,33 +26,42 @@ class ActionDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
         layout.addWidget(label("Add an action", "heading"))
-        form = QFormLayout()
-        form.setSpacing(12)
         self.kind = QComboBox()
         self.kind.addItems([name for name, _ in KINDS])
         self.kind.setCurrentIndex(kind)
-        form.addRow("Action", self.kind)
+        layout.addWidget(label("Action"))
+        layout.addWidget(self.kind)
         self.key = KeyPicker()
+        self.key.setObjectName("actionKey")
         self.key.set_code("BTN_LEFT" if kind == 1 else "KEY_SPACE")
-        self.key_label = label("Key / button")
-        form.addRow(self.key_label, self.key)
+        self.key_label = label("Key or button")
+        layout.addWidget(self.key_label)
+        layout.addWidget(self.key)
         self.delay = milliseconds()
-        form.addRow("Delay before", self.delay)
+        self.delay_label = label("Delay before")
         self.duration = milliseconds()
         self.duration.setValue(500 if kind == 2 else 100)
         self.duration_label = label("Hold for")
-        form.addRow(self.duration_label, self.duration)
+        timing = QHBoxLayout()
+        timing.setSpacing(14)
+        self.delay_group = property_field(self.delay_label, self.delay)
+        timing.addWidget(self.delay_group, 1)
+        self.duration_group = property_field(self.duration_label, self.duration)
+        timing.addWidget(self.duration_group, 1)
+        layout.addLayout(timing)
         self.x, self.y = QSpinBox(), QSpinBox()
         self.x_label, self.y_label = label("Relative X"), label("Relative Y")
-        for widget in (self.x, self.y):
+        coordinates = QHBoxLayout()
+        for caption, widget in ((self.x_label, self.x), (self.y_label, self.y)):
             widget.setRange(-32767, 32767)
+            widget.setButtonSymbols(QAbstractSpinBox.NoButtons)
+            widget.setObjectName("actionValue")
+            coordinates.addWidget(property_field(caption, widget), 1)
         self.x.setValue(10 if kind == 3 else 0)
         self.y.setValue(1 if kind == 4 else 0)
         self.x.setAccessibleName("Horizontal movement or scroll")
         self.y.setAccessibleName("Vertical movement or scroll")
-        form.addRow(self.x_label, self.x)
-        form.addRow(self.y_label, self.y)
-        layout.addLayout(form)
+        layout.addLayout(coordinates)
         self.random = QCheckBox("Random duration each time")
         layout.addWidget(self.random)
         self.maximum = milliseconds()
@@ -70,6 +80,7 @@ class ActionDialog(QDialog):
         layout.addWidget(self.error)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.button(QDialogButtonBox.Ok).setText("Add action")
+        buttons.button(QDialogButtonBox.Ok).setObjectName("primary")
         buttons.accepted.connect(self.add)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -94,7 +105,8 @@ class ActionDialog(QDialog):
         self.maximum.setVisible(timed and self.random.isChecked())
         self.maximum_label.setVisible(timed and self.random.isChecked())
         self.duration_label.setText("Timer duration" if kind == 2 else "Hold for")
-        self.delay.setEnabled(kind != 2)
+        self.delay_group.setVisible(kind != 2)
+        self.duration_group.setVisible(timed)
         for widget in (self.x, self.y, self.x_label, self.y_label):
             widget.setVisible(kind in (3, 4))
         self.x_label.setText("Horizontal notches" if kind == 4 else "Relative X")

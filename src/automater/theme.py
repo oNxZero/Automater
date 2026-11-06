@@ -280,6 +280,14 @@ QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QTextEdi
 QLineEdit#scriptTitle { background: transparent; border: 1px solid transparent;
                       padding: 0; font-size: 25px; font-weight: 700; }
 QLineEdit#scriptTitle:hover, QLineEdit#scriptTitle:focus { border-color: #363b52; background: #191d2b; }
+QDoubleSpinBox#actionValue, QSpinBox#actionValue, QComboBox#actionKey {
+    background: #171b29; border: 1px solid #30374c; border-radius: 9px;
+    padding: 9px 12px; font-size: 14px; min-height: 18px; }
+QDoubleSpinBox#actionValue:hover, QSpinBox#actionValue:hover, QComboBox#actionKey:hover {
+    border-color: #55566f; }
+QDoubleSpinBox#actionValue:focus, QSpinBox#actionValue:focus, QComboBox#actionKey:focus {
+    border-color: #b5a4fa; background: #191d2b; }
+QComboBox#actionKey QLineEdit { background: transparent; border: none; padding: 0; font-size: 14px; }
 QComboBox::drop-down { border: none; width: 24px; }
 QComboBox QAbstractItemView { background: #23283b; border: 1px solid #48435e;
                             selection-background-color: #403655; outline: none; }

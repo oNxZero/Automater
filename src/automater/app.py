@@ -37,6 +37,7 @@ def main():
         configure_qt_platform()
     except RuntimeError as exc:
         parser.error(str(exc))
+    from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
     from .desktop import APP_ID
@@ -48,6 +49,7 @@ def main():
     app.setDesktopFileName("io.github.onxzero.Automater")
     window = MainWindow(demo=args.demo)
     window.show()
+    QTimer.singleShot(0, window.offer_tutorial)
     return app.exec()
 
 

@@ -11,7 +11,7 @@ Inspired by [Moonlight](https://github.com/oNxZero/Moonlight).
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Automater-v0.12.0-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Automater-v0.13.0-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 [![Checks](https://github.com/oNxZero/Automater/actions/workflows/ci.yml/badge.svg)](https://github.com/oNxZero/Automater/actions/workflows/ci.yml)
 
@@ -105,7 +105,11 @@ Open the menu entry's **Try the example** action, or run:
 ```
 
 The example opens in **Test mode**: timing, camera follow and highlights run without
-sending input. **File → Getting started** explains the controls inside the app.
+sending input. **File → Guided example** takes you from an empty workflow to a
+successful Test-mode run: hold Space, wait, then tap E. Instructions stay beside
+the real controls, and a congratulations screen confirms the complete example ran.
+Skip anytime; your other workflows are kept. **File → Getting started** is the
+quick reference.
 **Devices → Check compatibility** shows what your desktop supports;
 `./start.sh --doctor --check-portal` checks pointer interfaces without requesting permission.
 
@@ -130,7 +134,7 @@ coordinates. Settings → Start configures an absolute cursor reset per loop.
 
 ## Themes
 
-Open **File → Appearance & themes**, **Settings → Appearance & themes**, or press
+Open **File → Appearance & themes**, or press
 **Ctrl+,**. Click Automater, Moonlight, Obsidian, Crimson, Dracula, Viper, Nord, Sakura,
 Solaris, Catppuccin or Daylight to apply it immediately.
 
