@@ -140,7 +140,7 @@ releases held inputs. Editing is locked during playback and recording; you can
 still switch between Workflow and Events to watch progress.
 
 Background compatibility remains application-specific. Native Wayland background
-delivery is unavailable. See the [platform matrix](../README.md#background-compatibility).
+delivery is unavailable. See the [platform matrix](COMPATIBILITY.md#desktop-and-display-server-features).
 
 ## Record from your devices
 
@@ -478,6 +478,10 @@ are represented by the latest worker snapshot; the UI cannot display every physi
 event as a separate rendered frame.
 
 ## Appearance and the quick guide
+
+![Theme gallery](themes.png)
+
+![Daylight workflow](daylight.png)
 
 Open **File → Appearance & themes**, or press **Ctrl+,**. The gallery includes Automater plus Moonlight, Obsidian, Crimson,
 Dracula, Viper, Nord, Sakura, Solaris, Catppuccin and Daylight. Click a card to apply
