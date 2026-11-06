@@ -41,10 +41,10 @@ CLI runs do not change the workflow file or editor preferences.
 | Option | Meaning |
 | --- | --- |
 | `--test` | Run without sending input. |
-| `--speed 1.5` | Change playback speed; range 0.1–10. |
+| `--speed 1.5` | Change playback speed from 0.1 to 10. |
 | `--repeat 3` | Run three times; 0 repeats until stopped. Default: 1. |
-| `--countdown 3` | Lead-in before playback, in seconds; range 0–30. Default: 0. |
-| `--loop-gap 0.5` | Seconds between repetitions; range 0–3600. Default: 0.25. |
+| `--countdown 3` | Wait before playback, from 0 to 30 seconds. Default: 0. |
+| `--loop-gap 0.5` | Wait between repetitions, from 0 to 3600 seconds. Default: 0.25. |
 | `--no-start-position` | Skip the cursor reset saved in the workflow. |
 | `--quiet` | Hide normal progress messages; errors and warnings still print. |
 

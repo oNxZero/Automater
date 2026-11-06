@@ -17,8 +17,9 @@ timing, then replay it. You can also build a workflow by hand.
 
 ![Automater playing a workflow in Test mode](docs/workflow-demo.gif)
 
-The GIF shows the app running an example in Test mode, without sending input.
-It was captured offscreen; the screenshots in the guide use staged example data too.
+The GIF shows a sample workflow running in Test mode. It doesn't send keyboard or
+mouse input. The screenshots in the guide use example data too; capture details
+are in [Contributing](CONTRIBUTING.md#documentation-screenshots).
 
 ## Install
 

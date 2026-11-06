@@ -63,7 +63,7 @@ identify your setup. See [SECURITY.md](SECURITY.md) for sensitive bugs.
 
 Workflows are UTF-8 JSON files. Validation lives in `src/automater/models.py`;
 `tests/test_models_storage.py` and the examples in `examples/` cover the format.
-Versions 1–4 are still readable. Later versions added timing ranges, starting
+Versions 1 through 4 are still readable. Later versions added timing ranges, starting
 coordinates, groups and group notes. Keep older files readable and preserve their
 recorded samples when changing the format.
 
