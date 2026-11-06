@@ -69,6 +69,12 @@ portal** checks for the required interfaces without opening a permission dialog 
 reading screen frames. Use **Connect Wayland pointer** when you want to grant pointer
 access.
 
+When a workflow needs cursor reset, the editor and CLI connect automatically. Remote
+Desktop portal version 2 supports saved approval; Automater requests it and reuses the
+replacement token returned by each successful connection. Older portals may prompt
+every time. The desktop can still require approval after access is revoked or monitors
+change. This uses the portal's normal permission flow; sudo cannot approve the dialog.
+
 You can also check from a terminal:
 
 ```bash

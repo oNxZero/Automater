@@ -29,7 +29,9 @@ jobs:
         run: |
           bash -n start.sh install.sh
           sh -n scripts/launch.sh
-          XDG_DATA_HOME="$RUNNER_TEMP/automater-menu" ./install.sh --no-system-packages --no-input-permissions
+          XDG_DATA_HOME="$RUNNER_TEMP/automater-menu" AUTOMATER_BIN_DIR="$RUNNER_TEMP/automater-bin" ./install.sh --no-system-packages --no-input-permissions
+          "$RUNNER_TEMP/automater-bin/automater" --version
+          "$RUNNER_TEMP/automater-bin/automater" run examples/input-controls.json --test --speed 10 --quiet
       - run: xvfb-run -a env QT_QPA_PLATFORM=offscreen python -m pytest -q
       - run: python -m build
   native-displays:
@@ -74,5 +76,7 @@ jobs:
           echo 'automater-ci ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/automater-ci
           chmod 0440 /etc/sudoers.d/automater-ci
           chown -R automater-ci:automater-ci "$GITHUB_WORKSPACE"
-          runuser -u automater-ci -- env XDG_DATA_HOME=/tmp/automater-installer-menu ./install.sh --no-input-permissions
+          runuser -u automater-ci -- env XDG_DATA_HOME=/tmp/automater-installer-menu AUTOMATER_BIN_DIR=/tmp/automater-installer-bin ./install.sh --no-input-permissions
           desktop-file-validate /tmp/automater-installer-menu/applications/io.github.onxzero.Automater.desktop
+          /tmp/automater-installer-bin/automater --version
+          /tmp/automater-installer-bin/automater run examples/input-controls.json --test --speed 10 --quiet

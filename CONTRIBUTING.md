@@ -26,6 +26,10 @@ your desktop apps.
 
 For UI work, `./start.sh --demo` opens a sample workflow in Test mode.
 
+For CLI work, `python -m automater run examples/input-controls.json --test` runs
+without Qt or an input device. Tests use private runtime directories and a fake
+portal on a private D-Bus session; they never request desktop permissions.
+
 ## Making changes
 
 Explain the problem and how to reproduce it in your pull request. Add a regression test

@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -84,20 +85,59 @@ def install(checkout, destination=None):
     return path
 
 
+def cli_path():
+    configured = os.environ.get("AUTOMATER_BIN_DIR", "")
+    folder = Path(configured) if configured else Path.home() / ".local/bin"
+    if not folder.is_absolute():
+        raise ValueError("AUTOMATER_BIN_DIR must be an absolute path")
+    return folder / "automater"
+
+
+def install_cli(checkout, destination=None):
+    checkout = Path(checkout).resolve()
+    entry_text(checkout)
+    path = Path(destination) / "automater" if destination is not None else cli_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = (
+        "#!/bin/sh\n# Automater command installed by install.sh\n"
+        f'exec {shlex.quote(str(checkout / ".venv/bin/python"))} -I -m automater "$@"\n'
+    )
+    import tempfile
+
+    fd, temporary = tempfile.mkstemp(prefix=".automater-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(content)
+        os.chmod(temporary, 0o755)
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return path
+
+
 def main():
     parser = argparse.ArgumentParser(description="Automater application-menu shortcut")
     parser.add_argument("--checkout", type=Path)
     parser.add_argument("--remove", action="store_true", help="Remove only the menu shortcut")
+    parser.add_argument(
+        "--with-cli", action="store_true", help="Also install the automater command"
+    )
+    parser.add_argument("--remove-cli", action="store_true", help="Remove the automater command")
     args = parser.parse_args()
     try:
         if args.remove:
             path = data_home() / "applications" / f"{APP_ID}.desktop"
             path.unlink(missing_ok=True)
             print("Removed Automater's menu shortcut. Workflows and settings were kept.")
-        else:
+        if args.remove_cli:
+            cli_path().unlink(missing_ok=True)
+            print("Removed Automater's CLI command.")
+        if not args.remove and not args.remove_cli:
             if not args.checkout:
                 parser.error("--checkout is required when installing")
             print(install(args.checkout))
+            if args.with_cli:
+                print(install_cli(args.checkout))
         updater = shutil.which("update-desktop-database")
         if updater:
             subprocess.run([updater, str(data_home() / "applications")], check=False)

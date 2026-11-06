@@ -1,5 +1,7 @@
 # Using Automater
 
+For running saved workflows without opening the editor, see the [CLI guide](CLI.md).
+
 The screenshots show the real app with example data, captured offscreen. Window names
 and the recording preview are filled in for the screenshots. Fonts and scaling may look
 different on your desktop.
@@ -257,10 +259,13 @@ Enable the starting point and set X/Y plus settle time. The cursor moves first o
 three seconds and reads the cursor without moving it. F12 cancels the position picker.
 
 Coordinates are saved with the script. X11 and Hyprland support direct positioning. On
-KDE or another Wayland desktop, use **Connect Wayland pointer**, approve pointer control
-and select physical monitors. This requires a compatible desktop portal. The connection
-is temporary and closes with Automater. No screen frames are read or saved. Use **Choose
-on screen** to click a location, and **Show starting point** to check it. A game may
+KDE or another Wayland desktop, Run connects pointer control automatically if needed.
+Approve the desktop dialog and select physical monitors when asked. You can also use
+**Connect Wayland pointer** before running. This requires a compatible desktop portal.
+The connection closes with Automater. Newer portals can remember your approval, though
+revoked access or changed monitors may cause another prompt. No screen frames are read
+or saved. Use **Choose on screen** to click a location, and **Show starting point** to
+check it. A game may
 still ignore a move that the portal reports as successful. Background coordinates are
 relative to the selected X11 window's client area and do not move or capture the real
 pointer. The target must still be chosen each session. Switching to another workflow
@@ -310,8 +315,8 @@ desktop overlays are unavailable for that routing mode.
 
 Check the visible **Test mode** line first. Test mode intentionally emits nothing; click
 **Use real inputs** to leave preview mode. In background mode the real cursor stays
-where it is. For desktop reset on KDE Wayland, connect pointer control in Start settings
-first. A permission or input-device error is shown in the status bar; hover it for the
+where it is. For desktop reset on KDE Wayland, approve pointer control when asked, or
+connect it first in Start settings. A permission or input-device error is shown in the status bar; hover it for the
 full message. See [starting-point setup](#start-countdown-and-loop-reset).
 
 ## Multiple workflows

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+launch_dir="$PWD"
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+checkout_dir="$PWD"
 if [[ ! -x .venv/bin/python ]]; then
     runtime_python=""
     candidates=(python3 python3.14 python3.13 python3.12 python3.11)
@@ -58,4 +60,5 @@ then
     echo "Updating Automater dependencies…"
     .venv/bin/python -m pip install -c requirements.lock -e .
 fi
-exec .venv/bin/automater "$@"
+cd -- "$launch_dir"
+exec "$checkout_dir/.venv/bin/automater" "$@"

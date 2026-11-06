@@ -154,6 +154,7 @@ def test_installer_configures_current_user_before_menu_registration(tmp_path, pe
             "PATH": str(tools) + os.pathsep + os.environ["PATH"],
             "AUTOMATER_SUDO_LOG": str(log),
             "XDG_DATA_HOME": str(tmp_path / "xdg"),
+            "AUTOMATER_BIN_DIR": str(tmp_path / "cli"),
             "USER": "root",
         },
         capture_output=True,

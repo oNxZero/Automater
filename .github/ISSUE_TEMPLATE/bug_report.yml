@@ -6,7 +6,7 @@ body:
     id: version
     attributes:
       label: Automater version
-      placeholder: 0.13.3
+      placeholder: 0.14.0
     validations:
       required: true
   - type: input
@@ -24,6 +24,7 @@ body:
         - Editor or file management
         - Recording
         - Test mode
+        - CLI playback
         - Active desktop playback
         - Background window · X11
         - Separate game session · Gamescope

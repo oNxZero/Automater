@@ -14,7 +14,9 @@ class VisualsMixin:
 
         if self.portal_connection:
             self.portal_connection.close()
-        self.portal_connection = PortalConnection(self)
+        self.portal_connection = PortalConnection(
+            self, token_path=self.config_dir / "portal-pointer.json"
+        )
         connection = self.portal_connection
         connection.ready.connect(
             lambda: self.pointer_ready() if self.portal_connection is connection else None
@@ -30,7 +32,7 @@ class VisualsMixin:
         self.connecting_pointer = True
         self.update_busy(True)
         self.status.setText(
-            "Approve pointer control and select your monitors in the desktop dialog · F12 cancels"
+            "Connecting pointer control… approve the desktop dialog if asked · F12 cancels"
         )
         self.portal_connection.connect_pointer()
 
@@ -40,11 +42,15 @@ class VisualsMixin:
         self.connecting_pointer = False
         self.update_busy(False)
         self.status.setText("Wayland pointer control connected · starting coordinates are ready")
+        if getattr(self, "play_after_pointer", False):
+            self.play_after_pointer = False
+            self.toggle_play()
 
     def pointer_failed(self, error):
         if not self.connecting_pointer:
             return
         self.connecting_pointer = False
+        self.play_after_pointer = False
         self.update_busy(False)
         self.show_error(error)
 

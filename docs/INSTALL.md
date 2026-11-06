@@ -8,7 +8,8 @@ You need Linux and Python 3.11 or newer. From the repository folder, run:
 
 The installer asks for sudo to install system packages on Debian/Ubuntu or Fedora. It
 then sets up Python dependencies, configures input permissions and adds Automater to
-your application menu. On other distributions, install the libraries
+your application menu and installs the `automater` command in `~/.local/bin`.
+On other distributions, install the libraries
 below and use `./install.sh --no-system-packages`.
 
 Keep the checkout folder in place: the shortcut launches the app from there. If you move
@@ -16,6 +17,11 @@ it, rerun the installer. The menu also has a **Try the example** action that ope
 sample in Test mode.
 
 You can also run `./start.sh` directly without installing a menu shortcut.
+
+If your shell cannot find `automater`, use `~/.local/bin/automater` or add
+`~/.local/bin` to your PATH. Set `AUTOMATER_BIN_DIR` to an absolute directory when
+running the installer to put the command elsewhere. See the [CLI guide](CLI.md)
+for running workflows from terminals and desktop shortcuts.
 
 The launcher keeps Python packages in `.venv` and checks their versions after an update.
 It looks for a supported Python if `python3` is too old. To choose one yourself, use
@@ -75,7 +81,9 @@ refresh dependencies and the menu shortcut. Rerun without that flag if system li
 have changed. Workflow JSON files remain compatible. Appearance and preferences are
 stored outside the checkout under `$XDG_CONFIG_HOME/automater`.
 
-To remove the menu shortcut, run `.venv/bin/python -m automater.desktop --remove`. Then
+To remove the menu shortcut and CLI command, run
+`.venv/bin/python -m automater.desktop --remove --remove-cli`. If you used a custom
+`AUTOMATER_BIN_DIR`, use the same setting when removing the command. Then
 close Automater and remove its checkout/virtual environment. Keep exported workflows and
 the config directory if you want recovery/preferences. Input permissions are left in
 place; Moonlight or other apps may also use them.
@@ -113,8 +121,11 @@ configures permissions; the flag only skips installing system packages.
 If setup fails, the installer shows the error and stops. Check that `modprobe`,
 `udevadm`, `groupadd` and `usermod` are installed, then retry. The app's
 **Devices → Input access help** and `./start.sh --doctor` can help check your setup.
-Wayland pointer-control permission is separate: grant it in Start settings if you
-want an absolute cursor reset on a desktop that requires the portal.
+Wayland pointer-control permission is separate. When a workflow needs cursor
+reset, Automater connects to the portal and asks for approval if needed. Newer
+portals can remember your approval; the desktop decides whether to prompt again.
+You can also set this up with `automater pointer setup` or **Connect Wayland
+pointer** in Start settings.
 
 After unplugging or reconnecting a device, stop recording or playback and refresh
 the device list. A disconnect or event-buffer overflow stops the run with an error.

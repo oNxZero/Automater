@@ -9,7 +9,7 @@ timing, then replay it. You can also build a workflow by hand.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Automater-v0.13.3-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Automater-v0.14.0-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 [![Checks](https://github.com/oNxZero/Automater/actions/workflows/ci.yml/badge.svg)](https://github.com/oNxZero/Automater/actions/workflows/ci.yml)
 
@@ -45,6 +45,21 @@ you to log out and back in, do that before recording or playback.
 
 For editing and Test mode only, run `./install.sh --no-input-permissions`.
 **Devices → Input access help** has troubleshooting steps if access is still missing.
+
+## Run from a terminal or keybind
+
+The installer also adds `~/.local/bin/automater`. Run a saved workflow without
+opening the editor:
+
+```bash
+automater run "/path/to/workflow.json"
+automater run "/path/to/workflow.json" --test
+automater stop
+```
+
+The process exits when the workflow finishes. You can bind the run command to a
+desktop shortcut; use the full command and workflow paths in the shortcut.
+See the [CLI guide](docs/CLI.md) for examples, playback options and status commands.
 
 ## Getting started
 

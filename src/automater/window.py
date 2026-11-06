@@ -101,7 +101,9 @@ class MainWindow(
         self.preferences_path = self.config_dir / "preferences.json"
         self.first_launch = (
             not self.preferences_path.exists()
-            and not any(self.config_dir.glob("*.json"))
+            and not any(
+                path.name != "portal-pointer.json" for path in self.config_dir.glob("*.json")
+            )
             and not self.library_dir.exists()
         )
         self.tutorial_dialog = None
@@ -1288,11 +1290,11 @@ class MainWindow(
                 available, reason = capability()
                 if not available and not (self.portal_connection and self.portal_connection.active):
                     self.show_inspector(2)
-                    raise ValueError(
-                        "Coordinate reset needs Wayland pointer permission. Click Connect Wayland pointer, or disable reset."
-                        if session_type() == "wayland"
-                        else reason
-                    )
+                    if session_type() == "wayland":
+                        self.play_after_pointer = True
+                        self.connect_pointer()
+                        return
+                    raise ValueError(reason)
             if not self.test_mode.isChecked() and script.warnings():
                 response = QMessageBox.question(
                     self,
@@ -1370,6 +1372,7 @@ class MainWindow(
             self.replay.pause()
 
     def stop(self, discard_recording=False):
+        self.play_after_pointer = False
         self.record_preview.hide()
         self.welcome_heading.setText("Create your first workflow")
         self.welcome_description.setText("Click Record below, or Add action above.")

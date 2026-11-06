@@ -5,7 +5,7 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
 usage() {
     echo "Usage: ./install.sh [--no-system-packages] [--no-input-permissions]"
-    echo "Installs runtime packages, input permissions and an application-menu shortcut."
+    echo "Installs runtime packages, input permissions, a menu shortcut and the automater command."
     echo "Use --no-system-packages when dependencies are already installed."
     echo "Use --no-input-permissions for editing and Test mode without device access."
 }
@@ -78,10 +78,11 @@ if (( input_permissions )); then
     sudo python3 scripts/setup_input.py "$install_user"
 fi
 echo "Creating your application-menu shortcut…"
-.venv/bin/python -m automater.desktop --checkout "$PWD"
+.venv/bin/python -m automater.desktop --checkout "$PWD" --with-cli
 echo
 echo "Automater is installed. Search for Automater in your application menu."
 echo "For a safe preview: ./start.sh --demo"
+echo "CLI: ${AUTOMATER_BIN_DIR:-$HOME/.local/bin}/automater run /path/to/workflow.json"
 if (( input_permissions )); then
     if [[ " $(id -nG) " != *" input "* ]]; then
         echo "Log out and back in before recording or playback so your new input-group membership takes effect."

@@ -172,7 +172,11 @@ def test_installer_registers_only_after_runtime_setup_succeeds(tmp_path, startup
             "--no-system-packages",
             "--no-input-permissions",
         ],
-        env={**os.environ, "XDG_DATA_HOME": str(tmp_path / "xdg")},
+        env={
+            **os.environ,
+            "XDG_DATA_HOME": str(tmp_path / "xdg"),
+            "AUTOMATER_BIN_DIR": str(tmp_path / "bin"),
+        },
         capture_output=True,
         text=True,
         timeout=10,

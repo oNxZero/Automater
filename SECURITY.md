@@ -14,3 +14,6 @@ response time.
 Automater reads the input devices you select and can send keyboard and mouse input. Run
 it as your regular user and review workflows before running or sharing them. The app has
 no telemetry or cloud upload.
+
+Keep `portal-pointer.json` private. It holds the desktop's saved pointer approval
+and is not part of a workflow export.
