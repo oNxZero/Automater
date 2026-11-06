@@ -1,17 +1,17 @@
 name: Feature request
-description: Suggest an improvement to a workflow or interaction
+description: Suggest a feature or improvement
 body:
   - type: textarea
     id: problem
     attributes:
       label: What are you trying to do?
-      description: Describe the current workflow and where it becomes difficult.
+      description: Describe where you get stuck with the current app.
     validations:
       required: true
   - type: textarea
     id: idea
     attributes:
       label: Suggested improvement
-      description: Explain the behavior you would find useful, with an example if possible.
+      description: How would you like it to work? An example helps.
     validations:
       required: true

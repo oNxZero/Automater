@@ -1,9 +1,13 @@
 # Contributing
 
-Automater is a native PySide6 Linux app. Start with the
-[user guide](docs/USER_GUIDE.md) and [Linux compatibility](docs/COMPATIBILITY.md).
+Automater is a Linux desktop app built with Python and PySide6. The [user
+guide](docs/USER_GUIDE.md) explains how it works; [Linux
+compatibility](docs/COMPATIBILITY.md) lists the desktop requirements.
 
 ## Development setup
+
+Use Python 3.11 or newer. Install the [system
+libraries](docs/INSTALL.md#system-libraries), then run:
 
 ```bash
 python3 -m venv .venv
@@ -14,53 +18,65 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 .venv/bin/python -m build
 ```
 
-Install Xvfb and xauth to run the private X11 integration checks rather than skip
-them. CI runs `xvfb-run -a env QT_QPA_PLATFORM=offscreen python -m pytest -q` on
-Python 3.11 and 3.14 on Ubuntu 22.04/24.04. Additional jobs check Debian/Fedora and
-native XCB/Wayland GUI boot. Install Weston to run the headless Wayland check locally.
-Tests create controlled receivers/private displays and do not
-send input to a user's real applications. Run `./start.sh --demo` for UI work.
+Install Xvfb and xauth for the X11 tests, and Weston for the Wayland startup test. Tests
+that need those tools are skipped when they aren't available. CI runs the full suite on
+Ubuntu 22.04/24.04 with Python 3.11/3.14, plus installation and startup checks on Debian
+and Fedora. Tests use their own displays and input receivers; they don't send input to
+your desktop apps.
 
-## Changes and bug reports
+For UI work, `./start.sh --demo` opens a sample workflow in Test mode.
 
-- Describe the trigger, expected behavior and what changed. Include focused
-  regressions for input ordering, timing, persistence and interaction bugs.
-- Keep replay work off the Qt thread. Preserve recorded event samples and timing
-  unless the user explicitly edits them. Pair startup failures with cleanup.
-- Use `theme.paint_color` for application canvas colors and `theme.icon` for icons.
-  A group's saved custom color stays portable; appearance stays in Preferences.
-- Do not commit recordings, preferences, recovery files or real window titles.
-  Root workflow JSON files are ignored; use synthetic fixtures for tests/screenshots.
-- Test UI changes at 1000×680 and a wide viewport, including Daylight. Check
-  keyboard focus, selection, notes while typing, tabs, Undo and an input-free run.
-- State whether a report uses Active desktop, Background X11 or a separate session.
-  Include Linux desktop/session type and Automater/Python/Qt versions. Review doctor
-  output before sharing; it may identify local devices and paths.
+## Making changes
 
-Direct game/compositor acceptance must be tested on an actual supported desktop;
-mocked backends or a private X11 receiver cannot establish it. Before a stable
-release, test real device recording/replay, held-input cleanup on Stop, pointer
-reset across monitors, permission denial and GPU-backed game sessions.
-Report security-sensitive issues through
-[the private reporting route](SECURITY.md).
+Explain the problem and how to reproduce it in your pull request. Add a regression test
+for bugs involving input order, timing, saved files or editor behavior.
+
+A few things to watch for:
+
+- Keep playback work off the Qt UI thread. Preserve recorded samples and timing
+  unless they're being edited, and release resources when startup fails.
+- Use `theme.paint_color` for canvas colors and `theme.icon` for icons. Saved group
+  colors belong to the workflow; app appearance belongs to Preferences.
+- Use made-up input and window names in tests and screenshots. Don't commit personal
+  recordings, preferences or recovery files. Git ignores JSON files at the repo root.
+- Check UI changes in Daylight and a dark theme, at 1000×680 and a wider window.
+  Try keyboard navigation, selection, typing notes, tabs, Undo and a Test mode run.
+
+Automated tests don't cover real device input or game compatibility. Before a stable
+release, also check recording and replay on a desktop, Stop releasing held keys, cursor
+reset across monitors, denied permissions and a Gamescope game session.
+
+## Reporting bugs
+
+Include the steps to reproduce, what you expected and what happened. Give your Automater
+version, Linux desktop and X11/Wayland session type. For playback bugs, say which
+destination mode you used. Python and Qt versions help if you know them.
+
+Check diagnostic output before posting it: device names, paths and window titles can
+identify your setup. See [SECURITY.md](SECURITY.md) for sensitive bugs.
 
 ## Workflow data
 
-Portable workflows contain versioned UTF-8 JSON data, never executable Python.
-`src/automater/models.py` defines validation; `tests/test_models_storage.py` and the
-synthetic files in `examples/` cover the format. Versions 1–4 remain readable;
-newer fields add timing ranges, starting coordinates, visual groups and group notes.
-Keep import compatibility and original event samples when changing the schema.
+Workflows are UTF-8 JSON files. Validation lives in `src/automater/models.py`;
+`tests/test_models_storage.py` and the examples in `examples/` cover the format.
+Versions 1–4 are still readable. Later versions added timing ranges, starting
+coordinates, groups and group notes. Keep older files readable and preserve their
+recorded samples when changing the format.
 
 ## Documentation screenshots
 
-`QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/screenshots.py` refreshes native
-Qt screenshots using synthetic workflows, an isolated config directory and Test
-mode. It never captures physical input or connects to real destination windows.
+These commands capture the app's Qt widgets offscreen:
 
-`QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/record_demo.py` records the README's
-looping GIF from real Test mode playback at 20 fps. Encoding requires FFmpeg;
-Automater itself does not require FFmpeg. Temporary frames are cleaned up afterward.
+```bash
+QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/screenshots.py
+QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/record_demo.py
+```
 
-Run `.venv/bin/python scripts/check_assets.py` after documentation or asset changes.
-It checks references and unused files, including dynamically selected theme icons.
+The screenshots use a temporary config and example data. Window names and the recording
+preview are filled in by the script. The GIF captures a real Test mode run at 20 fps,
+then FFmpeg resizes and encodes the frames. These are staged app captures, not desktop
+recordings or demonstrations of input reaching a game. FFmpeg is needed to make the GIF,
+but not to run Automater.
+
+Run `.venv/bin/python scripts/check_assets.py` after changing docs or images to check
+for broken references and unused assets.

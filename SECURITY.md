@@ -1,15 +1,16 @@
-# Security reports
+# Reporting security bugs
 
-For sensitive bugs involving input capture, saved data, command execution or local
-session authentication, use [GitHub's private vulnerability reporting](https://github.com/oNxZero/Automater/security/advisories/new)
-when it is enabled. Do not attach real recordings or credentials to a public issue.
-If that route is unavailable, open an issue asking for a private contact without
-including the sensitive details.
+Please don't post sensitive recordings, credentials or exploit details in a public
+issue. Use [GitHub's private reporting
+form](https://github.com/oNxZero/Automater/security/advisories/new) if it's available.
+If it isn't, open an issue asking how to get in touch privately and leave out the
+sensitive details.
 
-Ordinary UI/compatibility bugs belong in Issues. Include the version, Linux desktop,
-playback mode and a synthetic reproduction. There is no guaranteed response SLA;
-this project is maintained on a best-effort basis.
+This includes bugs involving input capture, saved files, command execution or access to
+a game session. Ordinary UI bugs can go in Issues. Include your version and steps to
+reproduce with a small example that contains no personal input. There is no guaranteed
+response time.
 
-Automater intentionally reads selected physical input devices and can emit desktop
-input. Use a trusted installation, run as your regular user, and review workflows
-before replaying or sharing them. No telemetry or cloud upload is implemented.
+Automater reads the input devices you select and can send keyboard and mouse input. Run
+it as your regular user and review workflows before running or sharing them. The app has
+no telemetry or cloud upload.

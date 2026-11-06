@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem in Automater
+description: Something isn’t working
 labels: [bug]
 body:
   - type: input
@@ -32,12 +32,12 @@ body:
   - type: textarea
     id: reproduce
     attributes:
-      label: Steps and expected result
-      description: Describe a small reproduction, what you expected and what happened. Use synthetic actions instead of personal recordings.
+      label: What happened?
+      description: List the steps to reproduce, what you expected, and what happened instead. Use a small example without personal input.
     validations:
       required: true
   - type: textarea
     id: diagnostics
     attributes:
       label: Optional diagnostics or screenshot
-      description: Review doctor output and screenshots for device names, window titles, paths and typed text before sharing.
+      description: Check for personal details before posting, including typed text, device names, window titles and file paths.
