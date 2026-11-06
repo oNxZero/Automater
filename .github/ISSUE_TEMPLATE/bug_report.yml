@@ -6,7 +6,7 @@ body:
     id: version
     attributes:
       label: Automater version
-      placeholder: 0.13.2
+      placeholder: 0.13.3
     validations:
       required: true
   - type: input

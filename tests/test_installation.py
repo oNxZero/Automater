@@ -166,7 +166,12 @@ def test_installer_registers_only_after_runtime_setup_succeeds(tmp_path, startup
     launcher.write_text(f'#!/bin/sh\n[ "$1" = "--doctor" ] || exit 99\nexit {startup_result}\n')
     launcher.chmod(0o755)
     result = subprocess.run(
-        ["bash", str(checkout / "install.sh"), "--no-system-packages"],
+        [
+            "bash",
+            str(checkout / "install.sh"),
+            "--no-system-packages",
+            "--no-input-permissions",
+        ],
         env={**os.environ, "XDG_DATA_HOME": str(tmp_path / "xdg")},
         capture_output=True,
         text=True,

@@ -3,6 +3,7 @@ recursive-include docs *.md *.png *.gif
 include examples/input-controls.json examples/movement-and-interaction.json
 include scripts/smoke_gui.py
 include scripts/launch.sh
+include scripts/setup_input.py
 include scripts/screenshots.py
 include scripts/record_demo.py
 include scripts/check_assets.py

@@ -1513,14 +1513,15 @@ class MainWindow(
         dialog.setWindowTitle("Linux input setup")
         dialog.setText("Connect your keyboard and mouse for recording and real playback.")
         dialog.setInformativeText(
-            "Follow Input permissions in docs/INSTALL.md, then return to Devices and Refresh. "
-            "Existing Moonlight permissions may already work.\n\n"
+            "Run ./install.sh in your installation folder to set up input access. "
+            "Log out and back in if asked, then return to Devices and Refresh.\n\n"
             "You can build workflows and use Test mode while setting this up."
         )
         dialog.setDetailedText(
             "Recording needs read access to the selected /dev/input/event* devices. "
-            "Desktop playback also needs writable /dev/uinput. Ask your administrator "
-            "to load uinput and grant access; docs/INSTALL.md describes the setup. "
+            "Desktop playback also needs writable /dev/uinput. The installer loads "
+            "uinput, adds your account to the input group and installs device rules. "
+            "See docs/INSTALL.md if setup fails. "
             "Run the app as your regular user.\n\n"
             "Input access can read keyboard activity across the desktop. Only recorded "
             "events are saved. Global F-keys need a selected readable keyboard."

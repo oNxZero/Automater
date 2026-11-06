@@ -27,7 +27,7 @@ place.
 | --- | --- |
 | Ubuntu 22.04 / 24.04 x86_64 | CI runs the full suite with Python 3.11 and 3.14; 22.04 needs a separately installed supported Python |
 | Debian 12 x86_64 | CI container installation, core tests and GUI smoke check |
-| Fedora 43 / 44 x86_64 | CI runs the full installer, core tests and a GUI smoke check |
+| Fedora 43 / 44 x86_64 | CI checks system packages, menu installation, core tests and GUI startup |
 | Arch, openSUSE, Gentoo and other glibc desktops | Should work with the required libraries and permissions; not checked in CI |
 | NixOS / immutable or sandboxed installs | May need distribution-specific packaging, an FHS environment or host device access; not checked in CI |
 | Older glibc systems / Alpine / other CPUs | Need a newer runtime or compatible Qt build; the standard installer does not cover these |
@@ -35,6 +35,10 @@ place.
 CI checks installation, app startup and automated behavior in containers and virtual
 displays. It does not test physical input or games. ARM packages are available on PyPI,
 but CI does not run on ARM hardware.
+
+Input setup is tested with temporary files and simulated system commands. Container
+installations use `--no-input-permissions`; loading kernel modules and applying device
+rules need a real desktop system.
 
 ## Desktop and display-server features
 

@@ -7,8 +7,8 @@ You need Linux and Python 3.11 or newer. From the repository folder, run:
 ```
 
 The installer asks for sudo to install system packages on Debian/Ubuntu or Fedora. It
-then sets up Python dependencies and adds Automater to your application menu. Device
-permissions are a separate step below. On other distributions, install the libraries
+then sets up Python dependencies, configures input permissions and adds Automater to
+your application menu. On other distributions, install the libraries
 below and use `./install.sh --no-system-packages`.
 
 Keep the checkout folder in place: the shortcut launches the app from there. If you move
@@ -77,36 +77,44 @@ stored outside the checkout under `$XDG_CONFIG_HOME/automater`.
 
 To remove the menu shortcut, run `.venv/bin/python -m automater.desktop --remove`. Then
 close Automater and remove its checkout/virtual environment. Keep exported workflows and
-the config directory if you want recovery/preferences. System input rules, if manually
-installed, are separate administrator settings.
+the config directory if you want recovery/preferences. Input permissions are left in
+place; Moonlight or other apps may also use them.
 
 ## Input permissions
 
-Recording needs read access to your selected `/dev/input/event*` devices. Desktop
-playback also needs write access to `/dev/uinput`. If you already use Moonlight, you may
-have these permissions set up. Run Automater as your regular user.
+`./install.sh` sets up input access automatically. It adds your account to the
+`input` group, loads `uinput`, and writes:
 
-The following rules grant the `input` group access to these devices. Membership allows
-reading keyboard activity across applications, so only add trusted users. An
-administrator can set this up with:
+- `/etc/udev/rules.d/99-automater.rules` for input-device permissions.
+- `/etc/modules-load.d/automater.conf` to load `uinput` at boot.
+
+Your other group memberships and any Moonlight rules are kept. Run the installer
+as your regular user; it uses sudo for these changes. If your current session is
+not already in the `input` group, log out and back in before recording or playback.
+
+The `input` group can read keyboard activity across applications and send input
+through `uinput`. Only give this access to trusted accounts.
+
+To install just the editor and Test mode, skip input setup:
 
 ```bash
-sudo modprobe uinput
-sudo groupadd -f input
-sudo usermod -aG input "$USER"
-sudo tee /etc/udev/rules.d/99-automater.rules >/dev/null <<'RULES'
-SUBSYSTEM=="misc", KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
-SUBSYSTEM=="input", KERNEL=="event*", GROUP="input", MODE="0660"
-RULES
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+./install.sh --no-input-permissions
 ```
 
-Log out and back in for group membership to take effect, then refresh devices. If your
-system does not load uinput on boot, an administrator can add `uinput` to
-`/etc/modules-load.d/automater.conf`. Your distribution may use different device-access
-rules. The launcher does not change them. Stop recording before typing anything you do
-not want included in a saved macro.
+If system dependencies are already installed, you can combine the flags:
 
-After unplugging or reconnecting a device, stop active work and refresh devices. If a
-device disconnects or its event buffer overflows, Automater stops and shows an error.
+```bash
+./install.sh --no-system-packages --no-input-permissions
+```
+
+To add input access later, rerun `./install.sh --no-system-packages`. This still
+configures permissions; the flag only skips installing system packages.
+
+If setup fails, the installer shows the error and stops. Check that `modprobe`,
+`udevadm`, `groupadd` and `usermod` are installed, then retry. The app's
+**Devices → Input access help** and `./start.sh --doctor` can help check your setup.
+Wayland pointer-control permission is separate: grant it in Start settings if you
+want an absolute cursor reset on a desktop that requires the portal.
+
+After unplugging or reconnecting a device, stop recording or playback and refresh
+the device list. A disconnect or event-buffer overflow stops the run with an error.

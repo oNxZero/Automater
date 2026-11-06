@@ -9,7 +9,7 @@ timing, then replay it. You can also build a workflow by hand.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Automater-v0.13.2-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Automater-v0.13.3-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 [![Checks](https://github.com/oNxZero/Automater/actions/workflows/ci.yml/badge.svg)](https://github.com/oNxZero/Automater/actions/workflows/ci.yml)
 
@@ -35,13 +35,16 @@ Fedora. See the [installation guide](docs/INSTALL.md) for other distributions.
 )
 ```
 
-Run this as your regular user. The installer asks for sudo to install system
-packages, sets up Python dependencies and adds **Automater** to your application
-menu. Keep the installation folder in place; the menu shortcut points to it.
+Run this as your regular user. The installer uses sudo for system packages and
+input permissions, sets up Python dependencies and adds **Automater** to your
+application menu. Keep the installation folder in place; the menu shortcut points to it.
 
-Recording and desktop playback need input-device permissions. Open
-**Devices → Input access help** for setup. Editing and Test mode work without
-those permissions.
+Input setup adds your account to the `input` group and enables `uinput` for playback.
+This allows reading keyboard and mouse activity across apps. If the installer asks
+you to log out and back in, do that before recording or playback.
+
+For editing and Test mode only, run `./install.sh --no-input-permissions`.
+**Devices → Input access help** has troubleshooting steps if access is still missing.
 
 ## Getting started
 
