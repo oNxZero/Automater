@@ -52,7 +52,8 @@ if (( system_packages )); then
             sudo dnf install -y git ca-certificates python3 python3-pip python3-devel gcc kernel-headers \
                 mesa-libEGL libglvnd-opengl mesa-libGL libxkbcommon libxkbcommon-x11 libxcb \
                 xcb-util-cursor xcb-util-wm xcb-util-keysyms xcb-util-image xcb-util-renderutil \
-                fontconfig freetype glib2 dbus-libs wayland-libs dejavu-sans-fonts desktop-file-utils
+                fontconfig freetype glib2 dbus-libs libwayland-client libwayland-cursor libwayland-egl \
+                dejavu-sans-fonts desktop-file-utils
             ;;
         *)
             echo "Automatic system-package setup currently covers Debian/Ubuntu and Fedora." >&2

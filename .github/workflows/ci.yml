@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [debian:bookworm, fedora:44]
+        image: [debian:bookworm, fedora:43, fedora:44]
     container: ${{ matrix.image }}
     steps:
       - name: Install Debian runtime
@@ -58,7 +58,7 @@ jobs:
           apt-get install -y --no-install-recommends git ca-certificates python3 python3-venv python3-dev gcc linux-libc-dev libegl1 libopengl0 libgl1 libxkbcommon0 libxcb-cursor0 fontconfig libfreetype6 libdbus-1-3 libglib2.0-0
       - name: Install Fedora runtime
         if: startsWith(matrix.image, 'fedora')
-        run: dnf install -y git ca-certificates python3 python3-pip python3-devel gcc kernel-headers mesa-libEGL libglvnd-opengl mesa-libGL libxkbcommon libxcb xcb-util-cursor fontconfig freetype dejavu-sans-fonts dbus-libs
+        run: dnf install -y git ca-certificates python3 python3-pip python3-devel gcc kernel-headers mesa-libEGL libglvnd-opengl mesa-libGL libxkbcommon libxcb xcb-util-cursor fontconfig freetype dejavu-sans-fonts dbus-libs sudo shadow-utils util-linux
       - uses: actions/checkout@v7
       - run: python3 -m venv .venv
       - run: .venv/bin/python -m pip install -c requirements.lock -e '.[dev]'
@@ -67,3 +67,12 @@ jobs:
       - run: ./start.sh --doctor
       - name: Check application-menu registration without changing host settings
         run: XDG_DATA_HOME=/tmp/automater-menu .venv/bin/python -m automater.desktop --checkout "$PWD"
+      - name: Run the Fedora installer including system packages
+        if: startsWith(matrix.image, 'fedora')
+        run: |
+          useradd --create-home automater-ci
+          echo 'automater-ci ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/automater-ci
+          chmod 0440 /etc/sudoers.d/automater-ci
+          chown -R automater-ci:automater-ci "$GITHUB_WORKSPACE"
+          runuser -u automater-ci -- env XDG_DATA_HOME=/tmp/automater-installer-menu ./install.sh
+          desktop-file-validate /tmp/automater-installer-menu/applications/io.github.onxzero.Automater.desktop

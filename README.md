@@ -9,7 +9,7 @@ timing, then replay it. You can also build a workflow by hand.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-b5a4fa?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-Wayland%20%7C%20X11-83b8f2?style=flat-square)
-![Version](https://img.shields.io/badge/Automater-v0.13.1-75d6c0?style=flat-square)
+![Version](https://img.shields.io/badge/Automater-v0.13.2-75d6c0?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-9199b3?style=flat-square)
 [![Checks](https://github.com/oNxZero/Automater/actions/workflows/ci.yml/badge.svg)](https://github.com/oNxZero/Automater/actions/workflows/ci.yml)
 
